@@ -1,0 +1,39 @@
+{
+  "rule_id": "ascend_performance_rules",
+  "rule_type": "performance_rule",
+  "title": "Ascend NPU性能优化规则",
+  "description": "Ascend NPU上的关键性能优化规则",
+  "rules": [
+    {
+      "name": "ub_capacity",
+      "description": "单次循环UB占用应 <= 85KB",
+      "rationale": "确保Double Buffering正常工作"
+    },
+    {
+      "name": "continuous_access",
+      "description": "尽量使用连续内存访问",
+      "rationale": "连续访问带宽利用率最高"
+    },
+    {
+      "name": "avoid_load_other",
+      "description": "避免使用带other参数的tl.load",
+      "rationale": "会阻止MTE独立执行，影响流水线"
+    },
+    {
+      "name": "fp32_accumulator",
+      "description": "累加操作使用FP32精度",
+      "rationale": "避免精度损失"
+    },
+    {
+      "name": "token_parallelism",
+      "description": "批量处理多个Token",
+      "rationale": "减少循环次数，提升效率"
+    }
+  ],
+  "examples": {
+    "good": "# 连续访问\noffsets = tl.arange(0, BLOCK_SIZE)\nx = tl.load(ptr + offsets)",
+    "bad": "# 离散访问\nfor i in indices:\n    x = tl.load(ptr + i)"
+  },
+  "tags": ["performance", "optimization", "ascend"],
+  "created_at": "2026-03-16"
+}

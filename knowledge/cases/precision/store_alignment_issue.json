@@ -1,0 +1,30 @@
+{
+  "case_id": "store_alignment_issue_20260316",
+  "case_type": "performance_issue",
+  "title": "tl.store地址对齐问题",
+  "problem": {
+    "description": "地址未对齐导致性能下降50%",
+    "symptoms": ["性能下降", "延迟增加", "MTE利用率低"],
+    "affected_apis": ["tl.store"],
+    "context": {
+      "hardware": "ascend910b2",
+      "dtype": "bfloat16"
+    }
+  },
+  "solution": {
+    "description": "确保地址16字节对齐",
+    "code_before": "tl.store(ptr + offset, value)",
+    "code_after": "aligned_offset = (offset // 16) * 16\ntl.store(ptr + aligned_offset, value)",
+    "steps": [
+      "检查存储地址是否对齐",
+      "计算对齐后的偏移量",
+      "使用对齐后的地址存储"
+    ]
+  },
+  "metadata": {
+    "tags": ["store", "alignment", "performance", "ascend"],
+    "severity": "high",
+    "created_at": "2026-03-16",
+    "usage_count": 0
+  }
+}

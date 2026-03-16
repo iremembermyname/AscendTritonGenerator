@@ -1,0 +1,35 @@
+{
+  "case_id": "cuda_atomic_to_ascend_20260316",
+  "case_type": "conversion",
+  "title": "CUDA原子操作转换",
+  "problem": {
+    "description": "CUDA代码使用原子操作，需要转换为Ascend兼容版本",
+    "symptoms": ["需要迁移CUDA代码", "原子操作行为差异"],
+    "affected_apis": ["tl.atomic_add", "tl.atomic_max"],
+    "context": {
+      "source_platform": "cuda",
+      "target_platform": "ascend"
+    }
+  },
+  "solution": {
+    "description": "Ascend支持原子操作，但性能特性可能不同，建议批量操作",
+    "cuda_code": "tl.atomic_add(ptr + offsets, value, mask=mask)",
+    "ascend_code": "tl.atomic_add(ptr + offsets, value, mask=mask)\n# 注意：Ascend上原子操作性能可能较低，建议尽量减少原子操作次数",
+    "changes": [
+      "API兼容，无需修改",
+      "注意性能差异",
+      "考虑使用批量操作替代"
+    ],
+    "steps": [
+      "检查原子操作使用场景",
+      "评估是否可以用批量操作替代",
+      "测试转换后性能"
+    ]
+  },
+  "metadata": {
+    "tags": ["atomic", "conversion", "cuda", "ascend"],
+    "severity": "low",
+    "created_at": "2026-03-16",
+    "usage_count": 0
+  }
+}

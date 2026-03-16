@@ -1,0 +1,39 @@
+{
+  "case_id": "matmul_tuning_20260316",
+  "case_type": "optimization",
+  "title": "MatMul算子性能优化",
+  "problem": {
+    "description": "MatMul算子性能不达标，需要优化",
+    "symptoms": ["性能低于预期", "内存带宽利用率低"],
+    "affected_apis": ["tl.dot", "tl.load", "tl.store"],
+    "context": {
+      "hardware": "ascend910b2",
+      "shape": [4096, 4096],
+      "dtype": "bfloat16",
+      "baseline_time_ms": 5.0,
+      "target_time_ms": 2.0
+    }
+  },
+  "solution": {
+    "description": "通过调整分块大小和优化内存访问模式提升性能",
+    "techniques": [
+      "调整BLOCK_M/BLOCK_N/BLOCK_K",
+      "使用FP32累加器",
+      "优化内存访问模式"
+    ],
+    "code_before": "BLOCK_M: tl.constexpr = 128\nBLOCK_N: tl.constexpr = 128\nBLOCK_K: tl.constexpr = 32",
+    "code_after": "BLOCK_M: tl.constexpr = 64\nBLOCK_N: tl.constexpr = 64\nBLOCK_K: tl.constexpr = 32\n\nacc = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)",
+    "steps": [
+      "减小分块大小以控制UB占用",
+      "使用FP32累加器提高精度",
+      "优化load/store顺序"
+    ],
+    "performance_after": "1.8 ms"
+  },
+  "metadata": {
+    "tags": ["matmul", "optimization", "performance", "ascend"],
+    "severity": "medium",
+    "created_at": "2026-03-16",
+    "usage_count": 0
+  }
+}

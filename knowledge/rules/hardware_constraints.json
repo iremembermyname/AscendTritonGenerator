@@ -1,0 +1,21 @@
+{
+  "rule_id": "ascend_hardware_constraints",
+  "rule_type": "hardware_constraint",
+  "title": "Ascend NPU硬件约束",
+  "description": "Ascend NPU的关键硬件约束条件",
+  "constraints": {
+    "ub_capacity_kb": 192,
+    "ub_safe_limit_kb": 85,
+    "max_block_size": 1024,
+    "recommended_block_size": 256,
+    "vector_core_count": 108
+  },
+  "rationale": "硬件资源限制，超出限制会导致性能下降或运行时错误",
+  "examples": {
+    "good": "BLOCK_SIZE: tl.constexpr = 256  # 在推荐范围内",
+    "bad": "BLOCK_SIZE: tl.constexpr = 2048  # 超出最大限制"
+  },
+  "related_apis": ["tl.program_id", "tl.arange", "tl.load", "tl.store"],
+  "tags": ["hardware", "constraint", "ascend", "ub", "block"],
+  "created_at": "2026-03-16"
+}
