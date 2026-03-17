@@ -51,16 +51,49 @@ Triton算子生成系统，支持Ascend NPU平台的算子开发、验证和优�
 
 | 任务类型 | 路由目标 | 触发条件 |
 |---------|---------|---------|
-| 算子生成 | planner agent | "生成/创建算子" |
-| 代码优化 | triton-performance-optimizer skill | "优化性能" |
-| 精度验证 | triton-precision-verifier skill | "验证精度" |
-| CUDA转换 | cuda-to-ascend-converter agent | "转换CUDA" |
+| 算子生成 | triton-expert agent | "生成/创建/实现算子" |
+| CUDA转换 | triton-expert agent | "转换CUDA/迁移代码" |
+| 性能优化 | triton-expert agent | "优化性能/加速" |
+| 精度验证 | /verify-precision | "验证精度/测试正确性" |
+| 性能分析 | /profile-performance | "分析性能/性能瓶颈" |
+| 问题调试 | /debug-kernel | "调试/NaN/Inf/错误" |
 | 添加知识 | /add-knowledge command | "添加知识" |
 
 ## Extended Configuration
 
-- **Agents**: `.claude/agents/` - 复杂任务处理
-- **Skills**: `.claude/skills/` - 操作指导
-- **Commands**: `.claude/commands/` - 快捷动作
-- **Rules**: `.claude/rules/` - 代码约束
-- **Knowledge**: `.claude/data/` - 统一知识库
+### Agents
+
+| Agent | Purpose | Activation Trigger |
+|-------|---------|-------------------|
+| `planner` | 任务规划 | 多步骤任务、架构决策 |
+| `triton-expert` | 算子开发专家 | 算子生成、CUDA转换、性能优化 |
+
+### Skills
+
+| Skill | Purpose | Invocation |
+|-------|---------|------------|
+| `verify-precision` | 精度验证流程 | `/verify-precision` |
+| `profile-performance` | 性能分析流程 | `/profile-performance` |
+| `debug-kernel` | 算子调试流程 | `/debug-kernel` |
+
+### Commands
+
+| Command | Purpose |
+|---------|---------|
+| `/add-knowledge` | 添加新知识到知识库 |
+
+### Rules
+
+| Rule | Purpose |
+|------|---------|
+| `ascend-hardware.md` | Ascend硬件约束 |
+| `triton-code.md` | Triton代码规范 |
+
+### Knowledge
+
+| Directory | Content |
+|-----------|---------|
+| `data/templates/` | 代码模板 |
+| `data/syntax/` | 语法参考 |
+| `data/guides/` | 指南文档 |
+| `data/cases/` | 案例库 |

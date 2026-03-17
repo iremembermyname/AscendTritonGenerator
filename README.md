@@ -4,10 +4,10 @@
 
 ## 功能特性
 
-- **智能算子生成** - 基于 step-by-step 指导生成高性能 Triton kernel
+- **智能算子生成** - 领域专家生成高性能 Triton kernel
 - **CUDA 到 Ascend 转换** - 自动将 CUDA Triton 代码迁移到 Ascend 平台
-- **精度验证** - 提供完整的精度验证流程和问题诊断
-- **性能优化** - 针对 Ascend NPU 架构的深度优化指导
+- **精度验证** - 提供完整的精度验证流程
+- **性能分析与优化** - 针对 Ascend NPU 架构的深度优化
 
 ## 技术栈
 
@@ -19,13 +19,13 @@
 
 ```
 .claude/
-├── agents/          # 智能体 - 复杂任务处理
-│   ├── cuda-to-ascend-converter.md
-│   └── planner.md
-├── skills/          # 技能 - 操作指导
-│   ├── triton-code-generator/
-│   ├── triton-performance-optimizer/
-│   └── triton-precision-verifier/
+├── agents/          # 领域专家 - 处理需要判断的复杂任务
+│   ├── planner.md
+│   └── triton-expert.md
+├── skills/          # 固化流程 - 有明确步骤的操作指南
+│   ├── verify-precision/
+│   ├── profile-performance/
+│   └── debug-kernel/
 ├── commands/        # 命令 - 快捷动作
 │   └── add-knowledge.md
 ├── rules/           # 规则 - 代码约束
@@ -38,29 +38,38 @@
     └── cases/
 ```
 
-### Agents（智能体）
+## Agents（领域专家）
+
+Agent 是"会思考的领域专家"，负责处理没有固定流程的复杂任务。
 
 | Agent | 功能 | 触发场景 |
 |-------|------|---------|
-| planner | 任务规划专家 | 多步骤任务、新功能设计、架构决策 |
-| cuda-to-ascend-converter | CUDA 转换专家 | CUDA 代码转换、GPU 到 NPU 迁移 |
+| planner | 任务规划专家 | 多步骤任务、架构决策 |
+| triton-expert | 算子开发专家 | 算子生成、CUDA转换、性能优化 |
 
-### Skills（技能）
+## Skills（固化流程）
 
-| Skill | 功能 | 触发场景 |
+Skill 是"有明确步骤的操作指南"，执行固定的操作流程。
+
+| Skill | 功能 | 调用方式 |
 |-------|------|---------|
-| triton-code-generator | 代码生成指导 | 生成 Triton kernel、实现算子 |
-| triton-performance-optimizer | 性能优化指导 | 性能调优、瓶颈分析 |
-| triton-precision-verifier | 精度验证指导 | 正确性验证、精度问题调试 |
+| verify-precision | 精度验证流程 | `/verify-precision` |
+| profile-performance | 性能分析流程 | `/profile-performance` |
+| debug-kernel | 算子调试流程 | `/debug-kernel` |
 
 ## 设计理念
 
-本项目采用 **分层架构 + Progressive Disclosure（渐进式信息披露）** 的设计理念，详细信息请参阅 [设计理念文档](docs/design-principles.md)。
+本项目遵循 **Agent = 领域专家，Skill = 固化流程** 的设计原则：
+
+- **Agent**：加载相关知识，处理需要专家判断的复杂任务，可通过Task工具调用其他agent或skill
+- **Skill**：提供有明确步骤的操作指南，执行固定的操作流程
+
+详细信息请参阅 [设计理念文档](docs/design-principles.md)。
 
 核心原则：
 - **信息分层**：入口文件精简，细节按需加载
-- **分层解耦**：Agents/Skills/Commands/Rules 各司其职
-- **智能决策**：简单自动处理，复杂询问用户
+- **职责清晰**：Agent负责复杂决策，Skill负责固定流程
+- **知识共享**：知识库是独立资源，Agent和Skill都可以引用
 
 ## 快速开始
 
@@ -75,6 +84,33 @@
 
 ```bash
 export LD_LIBRARY_PATH=/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64:$LD_LIBRARY_PATH && source /usr/local/Ascend/ascend-toolkit/set_env.sh
+```
+
+## 典型工作流
+
+### 新算子开发
+
+```
+用户需求 → planner agent (规划)
+         → triton-expert agent (生成代码)
+         → /verify-precision (验证精度)
+         → /profile-performance (分析性能)
+         → triton-expert agent (优化代码)
+```
+
+### CUDA转换
+
+```
+CUDA代码 → triton-expert agent (转换)
+         → /verify-precision (验证精度)
+```
+
+### 问题调试
+
+```
+问题报告 → /debug-kernel (调试流程)
+         → triton-expert agent (专家诊断，如需要)
+         → /verify-precision (验证修复)
 ```
 
 ## 核心命令
