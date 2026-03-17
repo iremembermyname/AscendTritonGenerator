@@ -1,260 +1,349 @@
 ---
 name: triton-performance-optimizer
-description: Triton算子性能优化指导。当需要提升算子性能、分析性能瓶颈、或应用Ascend优化技术时使用此skill。Use when optimizing performance, analyzing bottlenecks, or applying Ascend optimizations.
+description: Triton算子性能优化技能。当需要提升算子性能、分析性能瓶颈、应用Ascend优化技术时使用。触发场景包括：精度验证通过后需要优化、用户报告性能问题、用户提到"优化"、"性能"、"加速"、"耗时"、用户指定性能提升目标。Use when optimizing performance, analyzing bottlenecks, or applying Ascend optimizations.
 ---
 
 # Triton Performance Optimizer
 
-昇腾（Ascend）NPU 上 Triton 算子深度性能优化技能，致力于实现用户要求的性能提升目标。
+面向 Ascend NPU 的 Triton 算子深度性能优化技能，致力于实现用户要求的性能提升目标。
 
-**核心目标**：将指定的 Triton 算子性能提升至少 **x 倍**（用户要求的性能提升），在满足要求的基础上，性能越高越好，追求极致性能。
+## 核心目标
 
-**工作模式**：单算子优化模式。**禁止使用入图方式**来提升性能（模型侧会通过整网入图或 Piecewise 方式进行图优化，这里只关注单算子的独立优化）。
+将指定的 Triton 算子性能提升至少 **x 倍**（用户要求的性能提升），在满足要求的基础上，性能越高越好。
 
-**工作原则**：
+## 工作原则
+
 - **正确性优先**：每次修改后都必须进行正确性验证和性能测量
 - **目标导向**：性能提升未达到目标前，持续优化，不停止迭代
-- **迭代优化**：可以反复修改、测试、迭代，直至达成目标。修改 Triton 算子源代码前，务必备份，以便需要时恢复。
-- **精准修改**：追求"手术级"的精准修改，避免引入新问题。
-
-## When to Use
-
-This skill is triggered when:
-- User asks "optimize this code"
-- User mentions performance, speed, latency
-- After precision verification passes
-- Performance target not met
-- User mentions "昇腾NPU上Vector类Triton算子性能优化"
-
-## Knowledge Retrieval
-
-执行任务前，检索相关知识：
-1. `@.claude/data/guides/optimization-tips.md` - 优化技巧
-2. `@.claude/data/cases/optimization/` - 优化案例
-3. `@.claude/rules/ascend-hardware.md` - 硬件约束
-4. `@.claude/data/guides/troubleshooting.md` - 问题排查
+- **迭代优化**：可以反复修改、测试、迭代，直至达成目标
+- **单算子模式**：禁止使用入图方式提升性能
 
 ## 工作流程
 
-### Step 0: 环境配置
+```
+基线测量 → 瓶颈分析 → 知识检索 → 优化实施 → 验证迭代 → 输出报告
+```
 
-在昇腾 NPU 环境中，执行以下命令完成环境配置：
+---
+
+## Step 0: 环境配置
 
 ```bash
 export LD_LIBRARY_PATH=/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64:$LD_LIBRARY_PATH && source /usr/local/Ascend/ascend-toolkit/set_env.sh
 ```
 
-### Step 1: 基线性能验证
+---
 
-1. **深入分析算子**：输入参数、数据类型、Shape 范围、功能逻辑、计算流程及输出结果
-2. **运行功能测试**：`python -m pytest test_<op_name>.py`，验证算子的正确性和精度
-3. **执行性能测试**：
-   ```bash
-   msprof op --output=<用户指定的路径> --kernel-name="<op_name>_kernel" --warm-up=20 --launch-count=20 python test_<op_name>_perf.py
-   ```
-   输出中的 `Task Duration(us)` 即为当前算子的耗时，记录为基线性能数据。
+## Step 1: 基线性能测量
 
-### Step 2: 深度性能优化
+### 1.1 算子分析
 
-根据基线分析结果，对 `<op_name>.py` 算子进行针对性优化，确保性能提升至少 **x 倍**。
+深入分析算子：
+- 输入参数、数据类型、Shape 范围
+- 功能逻辑、计算流程及输出结果
 
-需运行以下测试：
-- **性能测试**：`msprof op --output=<用户指定的路径> --kernel-name="<op_name>_kernel" --warm-up=20 --launch-count=20 python test_<op_name>_perf.py`
-- **正确性验证**：`python -m pytest test_<op_name>.py`
+### 1.2 功能测试
 
-### Step 3: 迭代调优
+```bash
+python -m pytest test_<op_name>.py
+```
 
-参考以下文档进行迭代调优：
-- `@.claude/rules/ascend-hardware.md` - 硬件约束详解
-- `@.claude/data/guides/troubleshooting.md` - 问题排查指南
+### 1.3 性能测试
+
+```bash
+msprof op --output=<output_path> --kernel-name="<op_name>_kernel" --warm-up=20 --launch-count=20 python test_<op_name>_perf.py
+```
+
+**关键指标**: `Task Duration(us)` - 记录为基线性能数据
 
 ---
 
-## 性能优化参考
+## Step 2: 知识检索
 
-### 1. 多Token并行处理（首要优化点）
+### 2.1 检索优化技巧指南
 
-Ascend NPU 在架构上访存能力相对较弱，而计算能力较强，因此在设计时需要尽可能减少频繁的内存访问。**首要的关键优化点是批量处理多个 Tokens**，必须优先思考和调试，从而避免因逐个加载而产生的大量访存开销。
+**文件**: `.claude/data/guides/optimization-tips.md`
 
-一次循环里能处理的**最大 Token 数 N**，由 Kernel 内 **UB 可用容量**决定：
+**按优化目标检索**:
 
-**设：**
-- 单 Kernel 内 UB 总容量为 **192 KB**
-- 为留安全余量，仅使用 170 KB 的 **50%**（为确保启用 Double Buffering），即 **85 KB**
-- 单个 Token 在 Kernel 内同时占用的 UB 空间峰值为 $S_{\text{token}}$
+| 优化目标 | 检索章节 | 关键技术 |
+|---------|---------|---------|
+| 访存瓶颈 | §1 内存访问优化 | 连续访问、合并load、Block Pointer |
+| UB溢出 | §2 UB容量优化 | 控制使用量、减少中间变量 |
+| 流水线问题 | §3 流水线优化 | 避免other参数、加载计算交织 |
+| 分核问题 | §5 分核优化 | 负载均衡、front_core/tail_core |
+| 离散访存 | §7 离散访存优化 | tl.gather、高维离散低维连续 |
+| Load顺序 | §8 Load顺序优化 | 提前无依赖Load |
 
-则需满足：$N \times S_{\text{token}} \le 85 \times 1024$
+### 2.2 检索优化案例
 
-因此：$N \le \frac{85 \times 1024}{S_{\text{token}}}$
+**目录**: `.claude/data/cases/optimization/`
 
-**计算最大处理量时应使用整数除法（//）而非 `tl.cdiv`，否则易引发 UB 溢出问题。**
+**案例文件及适用场景**:
 
-### 2. UB占用计算公式
+| 案例文件 | 适用场景 | 关键优化点 |
+|---------|---------|-----------|
+| `matmul_tuning.json` | 矩阵乘法优化 | 分块大小调整、FP32累加 |
+| `discrete_memory_access.json` | 离散内存访问 | 访问模式优化 |
+| `dtype_optimization.json` | 数据类型优化 | 类型转换优化 |
+| `load_order_optimization.json` | Load顺序优化 | 依赖关系分析 |
+| `tiling_strategy.json` | 分块策略 | Block大小调整 |
+| `ub_overflow_handling.json` | UB溢出处理 | UB占用计算 |
+| `high_dim_discrete_access.json` | 高维离散访问 | insert_slice/extract_slice |
 
-统计 kernel 循环体内所有变量的 UB 同时占用的峰值：
+**使用方式**:
+1. 根据性能瓶颈症状匹配案例
+2. 参考案例中的 `code_before` 和 `code_after`
+3. 应用相同的优化技术
 
-**需要计入的变量**：
-1. `tl.load` 加载的所有 tensor
-2. 计算过程中产生的中间 tensor
-3. `tl.store` 暂存的输出 tensor
-4. 类型转换后的变量（bf16 → float32 大小翻倍）
+### 2.3 检索硬件约束
 
-**计算公式**：
-```
-S_token = max(S_token_load, S_token_compute, S_token_store) + S_static
+**文件**: `.claude/rules/ascend-hardware.md`
 
-其中：
-S_token_load = Σ(load_tensor_i × bytes_per_element_i)
-S_token_compute = Σ(load_tensor_i × bytes_per_element_i) + Σ(intermediate_tensor_j × bytes_per_element_j)
-S_token_store = Σ(store_tensor_k × bytes_per_element_k)
-S_static = 循环体外加载到UB的权重等静态变量
+**关键约束**:
+- UB容量：192KB，安全使用 ≤85KB
+- Block大小：≤1024
+- 核数：108个Vector核
+- 流水线：MTE/Vector/Scalar并行
 
-N = 85 * 1024 // S_token  （使用整数除法）
-```
+### 2.4 检索问题排查指南
 
-**示例**：以 add_kernel 为例，BLOCK_SIZE 个元素，BF16 类型：
-```
-S_token_load = BLOCK_SIZE × 2 + BLOCK_SIZE × 2 = 4 × BLOCK_SIZE bytes
-S_token_compute = BLOCK_SIZE × 2 + BLOCK_SIZE × 2 + BLOCK_SIZE × 2 = 6 × BLOCK_SIZE bytes
-S_token_store = BLOCK_SIZE × 2 bytes
-S_token = max(4, 6, 2) × BLOCK_SIZE = 6 × BLOCK_SIZE bytes
-N = 85 × 1024 // (6 × BLOCK_SIZE)
-```
+**文件**: `.claude/data/guides/troubleshooting.md`
 
-### 3. 掩码（mask）与尾块处理
+**按问题类型检索**:
 
-每次核函数加载和存储 tensor 时都需使用 `mask` 来处理不需要计算的尾块。经过 mask 处理后，每个核上的 tensor 形状保持一致。
+| 问题类型 | 检索章节 |
+|---------|---------|
+| 流水异常 | §1 流水异常 |
+| UB溢出 | §3 UB溢出 |
+| 编译错误 | §4-5 if分支/constexpr |
+| 性能退化 | §6 性能退化排查 |
 
-### 4. 减少kernel内Scalar运算
+### 2.5 检索 Ascend 扩展 API
 
-将与 pid 或循环变量无关的计算移至辅助函数或循环外部；能合并的计算尽量合并，减少冗余操作。
+**文件**: `.claude/data/syntax/ascend-extensions.md`
 
-### 5. 非连续地址访问
-
-对于 `index_select` 这类涉及非连续地址访问的操作，只能通过循环逐行读取数据；否则会引入大量标量（Scalar）计算（计算二维 mask），严重影响性能。
-
-### 6. 加载与计算交织
-
-当需要多次从同一全局内存地址加载数据并进行计算时，需采用"加载一次、计算一次"的方式，而不是全部加载完再统一计算。前者可有效隐藏访存延迟。
-
-### 7. 多写入流优化
-
-若存在多个写入流，建议边计算边写入数据。写入流通常不会相互冲突，计算完提前写入可以增大并行的可能。
-
-### 8. 使用tl.arange生成索引
-
-使用 `tl.arange` 可以高效地生成二维 tensor 的索引，避免直接从全局内存中读取离散行数据所带来的大量 Scalar 计算。
-
-### 9. 避免tl.where
-
-尽量避免使用 `tl.where`，因其主要适用于离散数据处理，性能较差。当访问内存规则连续时，用 `tl.insert_slice` 代替。
-
-### 10. 规约操作优化
-
-执行规约操作时，优先选择最大的维度进行规约，有助于提升性能。
-
-### 11. kernel入参声明
-
-对于同一模型调用期间保持不变的参数，推荐声明为 `tl.constexpr` 编译期常量；对于可能变化的参数（如 `batch_size`、`seq_len` 等），则应使用普通动态参数传入。
+**优化相关 API**:
+- Double Buffering (§2.1)
+- 多Token并行处理 (§2.2)
+- insert_slice (§3.4)
+- extract_slice (§3.5)
+- tl.gather (§3.6)
+- care_padding (§3.7)
 
 ---
 
-## 分核策略
+## Step 3: 瓶颈分析
 
-### 负载均衡分核
+### 3.1 使用 msprof 分析
+
+```bash
+msprof op --output=./profile --kernel-name="my_kernel" --warm-up=20 --launch-count=20 python test.py
+```
+
+### 3.2 关键指标分析
+
+| 指标 | 说明 | 优化目标 |
+|------|------|---------|
+| Task Duration | 总执行时间 | 最小化 |
+| MTE Utilization | MTE利用率 | 与Vector并行 |
+| Vector Utilization | Vector利用率 | 最大化 |
+| UB Usage | UB使用量 | ≤85KB |
+
+### 3.3 瓶颈诊断表
+
+| 症状 | 可能瓶颈 | 优化方向 |
+|------|---------|---------|
+| MTE利用率高，Vector低 | 访存瓶颈 | 多Token并行、减少load次数 |
+| Vector利用率高，MTE低 | 计算瓶颈 | 优化计算逻辑 |
+| 两者都不高 | 流水线问题 | 检查other参数、数据依赖 |
+| UB Usage > 85KB | UB溢出 | 减少中间变量、调整Block大小 |
+
+---
+
+## Step 4: 优化实施
+
+### 4.1 优化技术优先级
+
+按优先级顺序应用优化：
+
+**优先级1: 多Token并行处理**
+
+```python
+# 计算 N 值（使用整数除法！）
+N = 85 * 1024 // S_token
+
+for i in range(0, num_tokens, N):
+    tokens = tl.load(ptr + i * stride + offsets)
+    result = compute(tokens)
+    tl.store(out_ptr + i * stride + offsets, result)
+```
+
+**优先级2: 消除带other的tl.load**
+
+```python
+# 错误
+x = tl.load(ptr + offsets, mask=mask, other=0.0)
+
+# 正确
+x = tl.load(ptr + offsets, mask=mask)
+x = tl.where(mask, x, 0.0)
+```
+
+**优先级3: 加载计算交织**
+
+```python
+for i in range(num_blocks):
+    x = tl.load(x_ptr + offsets)
+    y = compute(x)
+    tl.store(y_ptr + offsets, y)
+```
+
+**优先级4: 分核优化**
 
 ```python
 core_num = get_vectorcore_num()
-num_tokens = qkv.shape[0]
-
-# front_core 处理多一个 Token，tail_core 处理少一个
-front_core_num = core_num
-if num_tokens % core_num != 0:
-    front_core_num = num_tokens % core_num
-
+front_core_num = num_tokens % core_num if num_tokens % core_num != 0 else core_num
 num_tokens_each_front_core = (num_tokens + core_num - 1) // core_num
-
-tail_core_num = 0
-if num_tokens > core_num:
-    tail_core_num = core_num - front_core_num
-
-num_tokens_each_tail_core = num_tokens // core_num
 ```
 
-**关键**：front_core 和 tail_core 的工作量差异不应超过 1 个 Token，以保持负载均衡。
+### 4.2 UB占用计算
+
+**公式**:
+```
+S_token = max(S_load, S_compute, S_store) + S_static
+N = 85 * 1024 // S_token  （使用整数除法！）
+```
+
+**示例**:
+```python
+# add_kernel: BLOCK_SIZE个元素，BF16类型
+S_load = BLOCK_SIZE * 2 + BLOCK_SIZE * 2 = 4 * BLOCK_SIZE bytes
+S_compute = BLOCK_SIZE * 2 + BLOCK_SIZE * 2 + BLOCK_SIZE * 2 = 6 * BLOCK_SIZE bytes
+S_store = BLOCK_SIZE * 2 bytes
+S_token = max(4, 6, 2) * BLOCK_SIZE = 6 * BLOCK_SIZE bytes
+N = 85 * 1024 // (6 * BLOCK_SIZE)
+```
+
+### 4.3 常见优化模式
+
+**离散访存优化**:
+```python
+# 使用 tl.gather 替代直接离散访问
+x_shared = tl.load(x_ptr + tl.arange(0, M))
+val = tl.gather(x_shared, idx, 0)
+```
+
+**Load顺序优化**:
+```python
+# 将无依赖的load提前
+for i in range(HEAD_NUM):
+    b_A = tl.load(p_A)  # 提前，可与上一轮store B并行
+    idx_B = tl.load(p_B_index)
+    b_B = tl.load(B + idx_B)
+```
 
 ---
 
-## 需遵循的规则和约束
+## Step 5: 验证迭代
 
-### 单算子模式
+### 5.1 每次优化后验证
 
-单个算子只关注单算子模式下的基础功能和性能，**禁止使用入图方式提升性能**。
+```bash
+# 1. 正确性验证
+python -m pytest test_<op_name>.py
 
-### tl.load 与 mask 使用要求
+# 2. 性能测试
+msprof op --output=<path> --kernel-name="<op_name>_kernel" --warm-up=20 --launch-count=20 python test_<op_name>_perf.py
+```
 
-- 尽量合并相同 load、计算和 store 操作
-- 避免在 `tl.load` 中使用 other 参数，因为其内部会触发 `tl.where`，导致 load 后无法与其他 load 并行
-- 推荐替代方案：先执行无掩码的 `tl.load`，再通过 `tl.where` 与 mask 组合实现掩码逻辑；当访问内存规则连续时，用 `tl.insert_slice` 代替
+### 5.2 迭代优化流程
 
-### 分支与编译约束
+```
+应用优化 → 正确性验证 → 性能测试 → 达到目标？
+                                        ↓是
+                                    输出报告
+                                        ↓否
+                                    继续优化
+```
 
-在 kernel 内部的 `if-else` 分支中，同名变量的 Shape 必须一致，否则会导致编译错误。
+### 5.3 性能退化排查
 
-### 数据搬运注意事项
+如果优化后性能变差：
 
-- 保证 tl.load 加载的是连续的多行数据；若数据分布离散，需逐行加载
-- 传递给 Triton 算子的 tensor 必须是内存连续的，必要时可通过 `.contiguous()` 方法确保
-- 避免复用 `tl.load` 和 `tl.store` 的变量名
+1. 检查UB是否溢出
+2. 检查流水线是否被破坏
+3. 检查N值计算是否正确
+4. 逐步回退定位问题
 
 ---
 
-## 结果报告
-
-性能优化目标达成后，需输出标准化报告：
+## Step 6: 输出报告
 
 ```markdown
 ## 优化结果报告
 
 ### 算子信息
 
-- 算子名称：<op_name>
-- 源文件：<file_path>
+- 算子名称: <op_name>
+- 源文件: <file_path>
 
 ### 性能对比
 
-| 基线耗时 (us) | 优化后耗时 (us) | 加速比 |
-|-------------|---------------|-------|
-| ... | ... | ...x |
+| 指标 | 基线 | 优化后 | 提升 |
+|------|------|--------|------|
+| 耗时 (us) | ... | ... | ...x |
+| MTE利用率 | ...% | ...% | - |
+| Vector利用率 | ...% | ...% | - |
 
 ### 优化技术清单
 
-1. [已应用] 多个 Token 并行处理：N = ...
-2. [已应用] 消除带 other 的 tl.load
-3. ...
+1. [已应用] 多Token并行处理: N = ...
+2. [已应用] 消除带other的tl.load
+3. [已应用] 加载计算交织
+4. ...
 
 ### 关键修改说明
 
-- 修改点 1：...
-- 修改点 2：...
+- 修改点1: ...
+- 修改点2: ...
+
+### 代码对比
+
+**优化前**:
+```python
+# code_before
+```
+
+**优化后**:
+```python
+# code_after
+```
 ```
 
 ---
 
-## Common Mistakes
+## 常见错误预防
 
-- ❌ 优化后不验证精度
-- ❌ 一次应用多个优化
-- ❌ 忽略硬件约束
-- ❌ 使用 `tl.cdiv` 计算 N 值（应用 `//`）
-- ❌ 带其他参数的 `tl.load`
-- ❌ 过度优化简单算子
+| 错误 | 预防方法 |
+|------|---------|
+| 使用 `tl.cdiv` 计算 N | 必须使用 `//` 整数除法 |
+| 带 other 的 tl.load | 分离 load 和 where |
+| 过度分核 | grid大小接近物理核数 |
+| 忽略边界条件 | 所有load/store带mask |
 
-## Optimization Patterns
+---
 
-| Pattern | When to Use | Example |
-|---------|-------------|---------|
-| Double Buffering | MTE瓶颈 | Pipeline load and compute |
-| 多Token并行 | 访存瓶颈 | 批量处理N个Token |
-| Block Pointer | 规则访问 | `tl.make_block_ptr` |
-| 加载计算交织 | 多次load | load一次compute一次 |
+## 与其他 Skill 的协作
+
+```
+triton-code-generator (代码生成)
+        ↓
+triton-precision-verifier (精度验证)
+        ↓ 验证通过
+triton-performance-optimizer (性能优化) ← 当前
+```
+
+**优化完成后**:
+- 输出优化报告
+- 如需进一步优化，继续迭代
