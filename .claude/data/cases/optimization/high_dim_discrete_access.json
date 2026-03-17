@@ -1,0 +1,41 @@
+{
+  "case_id": "optimization_high_dim_discrete_20260317",
+  "case_type": "optimization",
+  "title": "高维/低维离散访存优化 - 转置策略",
+  "problem": {
+    "description": "目标矩阵如果低维离散高维连续，在访存时编译器无法自动优化，需要手动转置处理",
+    "symptoms": [
+      "低维离散访存性能差",
+      "编译器无法自动优化",
+      "MTE利用率低"
+    ],
+    "affected_apis": ["tl.load", "tl.trans", "tl.insert_slice"],
+    "context": {
+      "hardware": "ascend910b2",
+      "scenario": "decode_grouped_attention中的K/V cache访问"
+    }
+  },
+  "solution": {
+    "description": "对于低维离散高维连续的矩阵，先转置为高维离散低维连续，然后逐行加载并使用insert_slice合并",
+    "techniques": [
+      "高维连续低维离散：逐行加载，insert_slice合并后转置",
+      "高维离散低维连续：编译器自动优化或手动for循环展开高维"
+    ],
+    "code_before": "# 问题：高维连续低维离散，直接加载性能差\noffs_buf_k = (\n    kv_loc[None, :] * stride_buf_kbs  # kv_loc是离散的\n    + cur_kv_head * stride_buf_kh\n    + offs_d[:, None]\n)\nk = tl.load(\n    K_Buffer + offs_buf_k,\n    mask=(offs_n[None, :] < split_kv_end) & (mask_d[:, None]),\n    other=0.0,\n)",
+    "code_after": "# 解决：逐行加载，insert_slice合并，最后转置\nk = tl.zeros([BLOCK_N, BLOCK_DMODEL], dtype=q.dtype)\nfor i in range(start_n, min(BLOCK_N + start_n, split_kv_end)):\n    ind = i - start_n\n    offs_buf_k = (\n        tl.get_element(kv_loc, (ind,)) * stride_buf_kbs\n        + cur_kv_head * stride_buf_kh\n        + offs_d[None, :]\n    )\n    k_tmp = tl.load(K_Buffer + offs_buf_k, mask=(mask_d[None, :]), other=0.0)\n    k = tl.insert_slice(k, k_tmp, (ind, 0), (1, BLOCK_DMODEL), (1, 1))\nk = tl.trans(k, (1, 0))  # 转置回目标形状",
+    "steps": [
+      "识别访存模式：高维离散还是低维离散",
+      "高维离散低维连续：直接加载或for循环展开高维",
+      "低维离散高维连续：转置后按高维离散处理",
+      "使用insert_slice合并加载的数据"
+    ],
+    "performance_impact": "避免离散访存退化，启用向量化加载，显著提升性能"
+  },
+  "metadata": {
+    "tags": ["discrete", "transpose", "insert_slice", "optimization", "ascend"],
+    "severity": "high",
+    "source": "triton-ascend-ops/tutorial/best_practice/002-decode_grouped_attention.py",
+    "created_at": "2026-03-17",
+    "usage_count": 0
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "case_id": "optimization_dtype_20260317",
+  "case_type": "optimization",
+  "title": "数据类型优化 - int32 vs int64 及 cmp操作类型转换",
+  "problem": {
+    "description": "Ascend NPU矢量运算单元不支持int64和部分int32/int64的cmp操作，会退化为标量运算导致性能下降",
+    "symptoms": [
+      "int64类型运算性能差",
+      "cmp操作（如tl.where中的比较）性能退化",
+      "Vector利用率低"
+    ],
+    "affected_apis": ["tl.load", "tl.store", "tl.where", "tl.cmp"],
+    "context": {
+      "hardware": "ascend910b2",
+      "issue": "矢量运算单元不支持int64，cmp操作不支持int32/int64"
+    }
+  },
+  "solution": {
+    "description": "使用int32替代int64；将cmp操作中的整数索引转换为float32以启用向量化",
+    "techniques": [
+      "int64 → int32：矢量运算单元支持int32",
+      "cmp索引转换：int64/int32 → float32 启用 vec_cast 和 vec_cmp"
+    ],
+    "code_before": "# 问题1: int64运算\nx = torch.randint(0, 100, (1, vector_len), device='npu', dtype=torch.int64)\n\n# 问题2: cmp操作退化为标量\ncols = tl.arange(0, BLOCK_N)  # cols is int64\nxbar = tl.where(cols < N, x - mean, 0.0)  # 退化为标量计算",
+    "code_after": "# 解决1: 使用int32\nx = torch.randint(0, 100, (1, vector_len), device='npu', dtype=torch.int32)\n\n# 解决2: 转换为float32启用向量化\ncols = tl.arange(0, BLOCK_N)\ncols_cmp = cols.to(tl.float32)  # 转换为float32\nxbar = tl.where(cols_cmp < N, x - mean, 0.0)  # 向量化计算",
+    "steps": [
+      "检查代码中使用的整数类型",
+      "将int64替换为int32（确保不影响精度）",
+      "识别tl.where中的整数比较操作",
+      "将比较操作数转换为float32"
+    ],
+    "performance_impact": "int64→int32可提升数倍性能；cmp类型转换可启用向量化，显著提升性能"
+  },
+  "metadata": {
+    "tags": ["dtype", "int32", "int64", "cmp", "vector", "optimization", "ascend"],
+    "severity": "high",
+    "source": "triton-ascend-ops/tutorial/basic/001-vector_add.py, 002-vector_cmp.py",
+    "created_at": "2026-03-17",
+    "usage_count": 0
+  }
+}

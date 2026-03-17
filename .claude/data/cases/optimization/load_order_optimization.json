@@ -1,0 +1,42 @@
+{
+  "case_id": "optimization_load_order_20260317",
+  "case_type": "optimization",
+  "title": "Load顺序优化 - 提前发射无依赖Load提升并行度",
+  "problem": {
+    "description": "编译器不会修改用户load指令的顺序。当前load被其他指令阻塞时，无数据依赖的load语句可以提前发射以提升并行度",
+    "symptoms": [
+      "MTE和Vector并行度低",
+      "Load指令串行执行",
+      "性能未达预期"
+    ],
+    "affected_apis": ["tl.load"],
+    "context": {
+      "hardware": "ascend910b2",
+      "issue": "load B waits for previous store B, blocking load A"
+    }
+  },
+  "solution": {
+    "description": "将无数据依赖的load语句移到可能阻塞的load之前，使其能与其他操作并行执行",
+    "techniques": [
+      "分析load之间的数据依赖",
+      "将无依赖的load提前",
+      "让load与上一轮的store并行"
+    ],
+    "code_before": "# 原始顺序：load B阻塞load A\nfor i in range(HEAD_NUM):\n    # load B (会被上一轮的store B阻塞)\n    idx_B = tl.load(p_B_index)\n    p_B = B + idx_B\n    b_B = tl.load(p_B)\n    \n    # load A (无法提前，因为load B阻塞)\n    b_A = tl.load(p_A)\n    \n    # calculation\n    b_B += tl.sum(b_A)\n    b_O = b_A * b_B\n    \n    # store\n    tl.store(p_O, b_O)\n    tl.store(p_B, b_B)",
+    "code_after": "# 优化顺序：load A提前，与上一轮store B并行\nfor i in range(HEAD_NUM):\n    # load A (提前，可与上一轮store B并行)\n    b_A = tl.load(p_A)\n    \n    # load B\n    idx_B = tl.load(p_B_index)\n    p_B = B + idx_B\n    b_B = tl.load(p_B)\n    \n    # calculation\n    b_B += tl.sum(b_A)\n    b_O = b_A * b_B\n    \n    # store\n    tl.store(p_O, b_O)\n    tl.store(p_B, b_B)",
+    "steps": [
+      "分析循环中的load/store依赖关系",
+      "识别被阻塞的load操作",
+      "找出无数据依赖的load",
+      "将无依赖load移到阻塞点之前"
+    ],
+    "performance_impact": "提升MTE与Vector并行度，隐藏访存延迟"
+  },
+  "metadata": {
+    "tags": ["load", "order", "parallel", "optimization", "ascend"],
+    "severity": "medium",
+    "source": "triton-ascend-ops/tutorial/basic/005-load_order.py",
+    "created_at": "2026-03-17",
+    "usage_count": 0
+  }
+}

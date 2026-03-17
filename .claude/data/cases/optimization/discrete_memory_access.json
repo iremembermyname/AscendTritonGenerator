@@ -1,0 +1,42 @@
+{
+  "case_id": "optimization_discrete_memory_20260317",
+  "case_type": "optimization",
+  "title": "离散访存优化 - tl.gather使用策略",
+  "problem": {
+    "description": "在离散访存场景下（如out = x[idx]），GPU可以直接从Global Memory离散访问取数，但NPU离散访问会退化为标量加载，大幅降低性能",
+    "symptoms": [
+      "离散访存性能差",
+      "MTE利用率低",
+      "数据加载退化为标量操作"
+    ],
+    "affected_apis": ["tl.load", "tl.gather"],
+    "context": {
+      "hardware": "ascend910b2",
+      "scenario": "out = x[idx] where idx is non-contiguous"
+    }
+  },
+  "solution": {
+    "description": "NPU先将连续数据从Global Memory搬至UB，再使用tl.gather从UB中筛选目标值",
+    "techniques": [
+      "批量加载连续数据到UB",
+      "使用tl.gather从UB中按索引选择",
+      "避免直接从GM离散访问"
+    ],
+    "code_before": "# GPU: 直接从Global Memory离散访问\n@triton.jit\ndef pick_kernel(x_ptr, idx_ptr, y_ptr, M: tl.constexpr, N: tl.constexpr):\n    pid = tl.program_id(0)\n    rn = tl.arange(0, N)\n    idx = tl.load(idx_ptr + rn)\n    mask = idx < M\n    val = tl.load(x_ptr + idx, mask=mask)  # GPU直接离散访问\n    tl.store(y_ptr + rn, val, mask=mask)",
+    "code_after": "# NPU: 先加载到UB，再gather\n@triton.jit\ndef pick_kernel(x_ptr, idx_ptr, y_ptr, M: tl.constexpr, N: tl.constexpr):\n    pid = tl.program_id(0)\n    rm = tl.arange(0, M)  # 加载全部数据\n    rn = tl.arange(0, N)\n    \n    idx = tl.load(idx_ptr + rn)\n    mask = idx < M\n    \n    x_shared = tl.load(x_ptr + rm)  # [M] 批量加载到UB\n    val = tl.gather(x_shared, idx, 0)  # 从UB中gather\n    \n    tl.store(y_ptr + rn, val, mask=mask)",
+    "steps": [
+      "识别离散访存场景（如index_select）",
+      "将目标数据批量加载到UB",
+      "使用tl.gather从UB中按索引选择",
+      "存储结果"
+    ],
+    "performance_impact": "避免标量加载，启用向量化操作，显著提升离散访存性能"
+  },
+  "metadata": {
+    "tags": ["discrete", "memory", "gather", "optimization", "ascend"],
+    "severity": "high",
+    "source": "triton-ascend-ops/tutorial/basic/004-discrete_memory_access.py",
+    "created_at": "2026-03-17",
+    "usage_count": 0
+  }
+}

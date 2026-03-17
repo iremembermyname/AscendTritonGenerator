@@ -1,0 +1,43 @@
+{
+  "case_id": "optimization_ub_overflow_20260317",
+  "case_type": "optimization",
+  "title": "UB溢出处理 - GPU直接搬入 vs NPU循环搬入",
+  "problem": {
+    "description": "GPU版本可以直接将大量数据搬入Shared Memory，但NPU版本受限于UB大小（192KB），在长序列场景下需要循环搬入",
+    "symptoms": [
+      "运行时UB溢出错误",
+      "长序列场景下内存不足",
+      "直接迁移GPU代码失败"
+    ],
+    "affected_apis": ["tl.load", "tl.store"],
+    "context": {
+      "hardware": "ascend910b2",
+      "ub_capacity": "192KB",
+      "safe_limit": "85KB per loop iteration"
+    }
+  },
+  "solution": {
+    "description": "使用循环分块加载，每次加载BLOCK_SIZE大小的数据，避免UB溢出",
+    "techniques": [
+      "计算单次循环最大处理量 N = 85KB / S_token",
+      "使用range循环分块处理",
+      "确保每次循环UB占用不超过85KB"
+    ],
+    "code_before": "# GPU: 直接加载大量数据\noffset_many_page = tl.arange(0, max_num_extend_tokens)\npage_start = tl.load(\n    free_page_ptr + new_page_start_loc + offset_many_page // page_size,\n    mask=offset_many_page < num_part2,\n)\ntl.store(\n    out_indices + output_start_loc + offset_many_page,\n    page_start * page_size + offset_many_page % page_size,\n    mask=offset_many_page < num_part2,\n)",
+    "code_after": "# NPU: 循环分块加载\nBLOCK_SIZE: tl.constexpr = 1024\nnum_loop = tl.cdiv(max_num_extend_tokens, BLOCK_SIZE)\nblk_offset = tl.arange(0, BLOCK_SIZE)\n\nfor i in range(num_loop):\n    offset_many_page = blk_offset + i * BLOCK_SIZE\n    page_start = tl.load(\n        free_page_ptr + new_page_start_loc + offset_many_page // page_size,\n        mask=offset_many_page < num_part2,\n    )\n    tl.store(\n        out_indices + output_start_loc + offset_many_page,\n        page_start * page_size + offset_many_page % page_size,\n        mask=offset_many_page < num_part2,\n    )",
+    "steps": [
+      "计算数据总量和单次处理量",
+      "确定BLOCK_SIZE（如1024）",
+      "使用range循环分块处理",
+      "每次迭代处理BLOCK_SIZE大小的数据"
+    ],
+    "performance_impact": "避免UB溢出，确保程序正确运行；合理的BLOCK_SIZE可保持良好性能"
+  },
+  "metadata": {
+    "tags": ["ub", "overflow", "loop", "tiling", "optimization", "ascend"],
+    "severity": "high",
+    "source": "triton-ascend-ops/tutorial/basic/003-ub_overflow.py",
+    "created_at": "2026-03-17",
+    "usage_count": 0
+  }
+}

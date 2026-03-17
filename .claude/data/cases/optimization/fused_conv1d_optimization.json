@@ -1,0 +1,46 @@
+{
+  "case_id": "optimization_fused_conv1d_20260317",
+  "case_type": "optimization",
+  "title": "完整算子优化案例 - causal_conv1d_update综合优化",
+  "problem": {
+    "description": "开源triton算子迁移到Ascend时存在多个性能问题：cat写法导致离散访存、32B对齐导致性能劣化、分核过多导致调度开销",
+    "symptoms": [
+      "cat操作使用负数offset导致离散访存",
+      "tl.where的mask计算占用大量时间",
+      "tensor尾轴不足32B自动补齐导致性能恶化",
+      "grid过大导致kernel调度开销"
+    ],
+    "affected_apis": ["tl.load", "tl.store", "tl.where", "tl.insert_slice", "tl.trans", "grid配置"],
+    "context": {
+      "hardware": "ascend910b2",
+      "source": "Qwen3-Next causal_conv1d_update",
+      "baseline_time": "1400us",
+      "optimized_time": "12us"
+    }
+  },
+  "solution": {
+    "description": "综合应用insert_slice替代cat、借轴转置规避32B对齐、优化分核策略",
+    "techniques": [
+      "使用insert_slice实现UB上的cat，规避负数offset",
+      "借轴转置：将短轴裂出一根对齐轴借给短轴",
+      "grid大小不超过物理核数（40/48）"
+    ],
+    "code_before": "# 问题1: cat写法导致离散访存\nidx_seq = tl.program_id(0)\nidx_feats = tl.program_id(1) * BLOCK_N + tl.arange(0, BLOCK_N)\nVAL = state_len - seqlen\n\n# 负数offset导致离散访存\nx_ptrs = x_base[None, :] + ((idx_tokens - VAL) * stride_x_token)[:, None]\nloaded_x = tl.load(x_ptrs, mask_x, 0.0)\n\n# tl.where实现cat，mask计算耗时\nnew_conv_state = tl.where(mask, conv_state, loaded_x)\n\n# 问题2: grid过大\ngrid = (batch, dim // BLOCK_N)  # 可能512个逻辑核",
+    "code_after": "# 解决1: 使用insert_slice实现cat\nx = tl.load(x_ptr + pid * x_batch_stride + doffs * seq_len + tl.arange(0, DIM_BLOCK * seq_len))\nx_T = x.trans()\n\nx_new_T = tl.full([cat_len * DIM_BLOCK], 0, x_ptr.dtype.element_ty)\nx_new_T = tl.insert_slice(x_new_T, conv_state_T, offsets=(0,), sizes=(state_len * DIM_BLOCK,), strides=(1,))\nx_new_T = tl.insert_slice(x_new_T, x_T, offsets=(state_len * DIM_BLOCK,), sizes=(seq_len * DIM_BLOCK,), strides=(1,))\n\n# 解决2: 借轴转置规避32B对齐\n# conv_state = tensor([2048, 3], bfloat16)\nconv_state = tl.load(conv_state_ptr + ...)  # 当成1D tensor load\nconv_state_T = conv_state.reshape(128, 16 * 3).trans().reshape(16, 3 * 128).trans().reshape(3 * 2048,)\n\n# 解决3: 优化分核\ngrid = (triton.cdiv(batch * dim, BLOCK_SIZE),)  # 逻辑核数接近物理核数",
+    "steps": [
+      "识别cat操作中的负数offset和tl.where",
+      "使用insert_slice替代，先转置再合并",
+      "检查tensor尾轴是否满足32B对齐",
+      "使用借轴转置技巧规避自动补齐",
+      "调整grid使逻辑核数接近物理核数"
+    ],
+    "performance_impact": "从1400us优化到12us，提升100倍以上"
+  },
+  "metadata": {
+    "tags": ["fused", "conv1d", "cat", "alignment", "grid", "optimization", "ascend"],
+    "severity": "high",
+    "source": "triton-ascend-ops/tutorial/best_practice/003-fused-cat-slice-conv1d.py",
+    "created_at": "2026-03-17",
+    "usage_count": 0
+  }
+}

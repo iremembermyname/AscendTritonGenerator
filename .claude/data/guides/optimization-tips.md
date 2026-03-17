@@ -221,11 +221,177 @@ grid = (num_elements,)  # 每个元素一个program
 grid = (triton.cdiv(num_elements, BLOCK_SIZE),)
 ```
 
+### 5.3 逻辑核等于物理核原则
+
+**原则**：NPU物理核数一般为40或48，逻辑核数量应接近物理核数。
+
+```python
+# GPU: 多维度分核
+grid = (B, triton.cdiv(K, BLOCK_K))  # 可能产生数百个逻辑核
+
+# NPU: 单维度分核，内部循环处理
+grid = (triton.cdiv(B, BLOCK_B),)  # 逻辑核数接近物理核数
+
+# kernel内部循环处理更多数据
+for k_start in range(0, K, BLOCK_K):
+    # 处理K维度的数据
+    pass
+```
+
+### 5.4 front_core/tail_core策略
+
+**原则**：当数据量不能被核数整除时，使用front_core和tail_core保持负载均衡。
+
+```python
+core_num = get_vectorcore_num()
+num_tokens = qkv.shape[0]
+
+# front_core处理多一个Token
+front_core_num = core_num
+if num_tokens % core_num != 0:
+    front_core_num = num_tokens % core_num
+
+num_tokens_each_front_core = (num_tokens + core_num - 1) // core_num
+
+tail_core_num = 0
+if num_tokens > core_num:
+    tail_core_num = core_num - front_core_num
+
+num_tokens_each_tail_core = num_tokens // core_num
+```
+
 ---
 
-## 6. Mask优化
+## 6. 数据类型优化
 
-### 6.1 预计算mask
+### 6.1 避免int64运算
+
+**原则**：Ascend矢量运算单元不支持int64，使用int32替代。
+
+```python
+# 差：int64运算退化为标量
+x = torch.randint(0, 100, (1, vector_len), device='npu', dtype=torch.int64)
+
+# 好：使用int32启用向量化
+x = torch.randint(0, 100, (1, vector_len), device='npu', dtype=torch.int32)
+```
+
+### 6.2 cmp操作类型转换
+
+**原则**：cmp操作不支持int32/int64，需转换为float32启用向量化。
+
+```python
+# 差：int64比较退化为标量
+cols = tl.arange(0, BLOCK_N)  # int64
+xbar = tl.where(cols < N, x - mean, 0.0)  # 退化为标量计算
+
+# 好：转换为float32启用向量化
+cols = tl.arange(0, BLOCK_N)
+cols_cmp = cols.to(tl.float32)  # 转换为float32
+xbar = tl.where(cols_cmp < N, x - mean, 0.0)  # 向量化计算
+```
+
+---
+
+## 7. 离散访存优化
+
+### 7.1 使用tl.gather替代直接离散访问
+
+**原则**：先批量加载到UB，再使用gather筛选。
+
+```python
+# 差：直接从GM离散访问
+idx = tl.load(idx_ptr + rn)
+val = tl.load(x_ptr + idx, mask=mask)  # 离散访问，退化为标量
+
+# 好：先加载到UB，再gather
+rm = tl.arange(0, M)
+x_shared = tl.load(x_ptr + rm)  # 批量加载到UB
+val = tl.gather(x_shared, idx, 0)  # 从UB中gather
+```
+
+### 7.2 高维离散低维连续
+
+**原则**：编译器自动优化或手动for循环展开高维。
+
+```python
+# 高维离散低维连续：编译器自动优化
+offs_buf_v = (
+    kv_loc[:, None] * stride_buf_vbs  # kv_loc离散
+    + cur_kv_head * stride_buf_vh
+    + offs_dv[None, :]  # offs_dv连续
+)
+v = tl.load(V_Buffer + offs_buf_v, mask=mask)
+```
+
+### 7.3 低维离散高维连续
+
+**原则**：需要转置处理，逐行加载后合并。
+
+```python
+# 低维离散高维连续：需要转置处理
+k = tl.zeros([BLOCK_N, BLOCK_DMODEL], dtype=q.dtype)
+for i in range(start_n, min(BLOCK_N + start_n, split_kv_end)):
+    ind = i - start_n
+    offs_buf_k = (
+        tl.get_element(kv_loc, (ind,)) * stride_buf_kbs
+        + cur_kv_head * stride_buf_kh
+        + offs_d[None, :]
+    )
+    k_tmp = tl.load(K_Buffer + offs_buf_k, mask=(mask_d[None, :]), other=0.0)
+    k = tl.insert_slice(k, k_tmp, (ind, 0), (1, BLOCK_DMODEL), (1, 1))
+k = tl.trans(k, (1, 0))  # 转置回目标形状
+```
+
+---
+
+## 8. Load顺序优化
+
+### 8.1 提前无依赖Load
+
+**原则**：将无数据依赖的load提前，使其能与其他操作并行。
+
+```python
+# 差：load B阻塞load A
+for i in range(HEAD_NUM):
+    # load B (会被上一轮的store B阻塞)
+    idx_B = tl.load(p_B_index)
+    b_B = tl.load(B + idx_B)
+    # load A (无法提前)
+    b_A = tl.load(p_A)
+    ...
+
+# 好：load A提前，与上一轮store B并行
+for i in range(HEAD_NUM):
+    # load A (提前，可与上一轮store B并行)
+    b_A = tl.load(p_A)
+    # load B
+    idx_B = tl.load(p_B_index)
+    b_B = tl.load(B + idx_B)
+    ...
+```
+
+### 8.2 分析依赖关系
+
+**原则**：识别load/store之间的数据依赖，优化执行顺序。
+
+```
+原始顺序：
+load B → load A → calc → store O → store B
+         ↑
+         被上一轮store B阻塞
+
+优化顺序：
+load A → load B → calc → store O → store B
+   ↑
+   与上一轮store B并行
+```
+
+---
+
+## 9. Mask优化
+
+### 9.1 预计算mask
 
 **原则**：在循环外预计算mask。
 
@@ -242,7 +408,7 @@ for i in range(num_blocks):
     mask = offsets < n
 ```
 
-### 6.2 避免二维mask
+### 9.2 避免二维mask
 
 **原则**：避免使用二维mask，它占用大量UB。
 
@@ -258,9 +424,9 @@ for i in range(M):
 
 ---
 
-## 7. 特定算子优化
+## 10. 特定算子优化
 
-### 7.1 Softmax优化
+### 10.1 Softmax优化
 
 ```python
 @triton.jit
@@ -296,7 +462,7 @@ def optimized_softmax(x_ptr, output_ptr, M, N, stride_m, BLOCK_N: tl.constexpr):
         tl.store(output_ptr + row_start + offsets, out, mask=mask)
 ```
 
-### 7.2 LayerNorm优化
+### 10.2 LayerNorm优化
 
 ```python
 @triton.jit
@@ -334,9 +500,42 @@ def optimized_layernorm(x_ptr, y_ptr, w_ptr, b_ptr, M, N, stride_m, eps: tl.cons
 
 ---
 
-## 8. 性能调试技巧
+## 11. 32B对齐优化
 
-### 8.1 使用msprof
+### 11.1 借轴转置技巧
+
+**原则**：昇腾UB要求tensor尾轴大小能被32Byte整除，不足会自动补齐。可通过转置将对齐轴转到低维。
+
+**适用场景**：`tensor.numel() % 256Byte == 0`
+
+```python
+# conv_state = tensor([2048, 3], bfloat16)
+# 尾轴3 * 2B = 6B，不满足32B对齐
+
+# 解决：借轴转置
+conv_state = tl.load(conv_state_ptr + ...)  # 当成1D tensor load
+# 长轴(2048)裂出一根对齐轴(16)借给短轴(3)
+conv_state_T = conv_state.reshape(128, 16 * 3).trans().reshape(16, 3 * 128).trans().reshape(3 * 2048,)
+```
+
+### 11.2 避免自动补齐
+
+**原则**：对shape为(2048, 3)或(2048, 1)的tensor操作会因自动补齐导致性能恶化。
+
+```python
+# 差：直接操作导致自动补齐
+x = tl.load(ptr + offsets)  # shape (2048, 3)，自动补齐到32B
+
+# 好：转置后操作
+x = tl.load(ptr + offsets)  # 当成1D加载
+x_T = x.reshape(...).trans()  # 借轴转置
+```
+
+---
+
+## 12. 性能调试技巧
+
+### 12.1 使用msprof
 
 ```bash
 # 采集性能数据
@@ -347,7 +546,7 @@ msprof op --output=./profile --kernel-name="my_kernel" \
 # 查看 Task Duration, MTE/Vector Utilization, UB Usage
 ```
 
-### 8.2 对比优化前后
+### 12.2 对比优化前后
 
 ```python
 # 记录优化前性能
@@ -363,7 +562,7 @@ after_time = benchmark_kernel(optimized_kernel_fn, inputs)
 speedup = before_time / after_time
 ```
 
-### 8.3 逐步优化
+### 12.3 逐步优化
 
 ```python
 # 一次只应用一个优化，验证效果

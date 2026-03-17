@@ -1,0 +1,43 @@
+{
+  "case_id": "optimization_tiling_20260317",
+  "case_type": "optimization",
+  "title": "Tiling/分核优化 - 逻辑核等于物理核原则",
+  "problem": {
+    "description": "NPU设备的物理核数一般为40或48，当发射的逻辑核数量远大于物理核时，会有严重的启动及调度开销",
+    "symptoms": [
+      "kernel启动开销大",
+      "调度开销高",
+      "性能低于预期"
+    ],
+    "affected_apis": ["grid配置", "tl.program_id"],
+    "context": {
+      "hardware": "ascend910b2",
+      "physical_cores": "40-48 vector cores",
+      "issue": "过多逻辑核导致调度开销"
+    }
+  },
+  "solution": {
+    "description": "使发射的逻辑核数量等于或接近物理核数，在kernel内部通过循环处理更多数据",
+    "techniques": [
+      "grid大小等于物理核数",
+      "kernel内部使用循环处理多个数据块",
+      "避免过度分核"
+    ],
+    "code_before": "# GPU: 每个数据块一个kernel\n@triton.jit\ndef gather_dim1_kernel(..., B, K, BLOCK_B: tl.constexpr, BLOCK_K: tl.constexpr):\n    pid_b = tl.program_id(0)\n    pid_k = tl.program_id(1)  # GPU: 多维度分核\n    \n    k_off = pid_k * BLOCK_K + tl.arange(0, BLOCK_K)\n    mask = k_off < K\n    idx = tl.load(idx_ptr + pid_b * stride_ib + k_off * stride_ik, mask=mask)\n    x_val = tl.load(x_ptr + pid_b * stride_xb + idx * stride_xc, mask=mask)\n    tl.store(out_ptr + pid_b * stride_ob + k_off * stride_ok, x_val, mask=mask)\n\n# GPU grid\ngrid = (B, triton.cdiv(K, BLOCK_K))  # 可能产生数百个逻辑核",
+    "code_after": "# NPU: 逻辑核=物理核，内部循环处理\n@triton.jit\ndef gather_dim1_kernel(..., B, K, BLOCK_B: tl.constexpr, BLOCK_K: tl.constexpr):\n    pid_b = tl.program_id(0)  # NPU: 单维度分核\n    \n    b_idx = pid_b * BLOCK_B + tl.arange(0, BLOCK_B)\n    b_mask = b_idx < B\n    \n    # 内部循环处理K维度\n    for k_start in range(0, K, BLOCK_K):\n        ks = tl.arange(0, BLOCK_K)\n        k_mask = ks < K - k_start\n        \n        idx_off = (b_idx[:, None] * stride_ib + (k_start + ks)[None, :] * stride_ik)\n        col_idx = tl.load(idx_ptr + idx_off, mask=b_mask[:, None] & k_mask)\n        \n        x_off = (b_idx[:, None] * stride_xb + col_idx * stride_xc)\n        x_val = tl.load(x_ptr + x_off, mask=b_mask[:, None] & k_mask)\n        \n        out_off = (b_idx[:, None] * stride_ob + (k_start + ks)[None, :] * stride_ok)\n        tl.store(out_ptr + out_off, x_val, mask=b_mask[:, None] & k_mask)\n\n# NPU grid\ngrid = (triton.cdiv(B, BLOCK_B),)  # 逻辑核数接近物理核数",
+    "steps": [
+      "获取物理核数（如40或48）",
+      "设计grid使逻辑核数接近物理核数",
+      "在kernel内部使用循环处理更多数据",
+      "平衡每个核的工作量"
+    ],
+    "performance_impact": "减少kernel启动和调度开销，提升整体性能"
+  },
+  "metadata": {
+    "tags": ["tiling", "grid", "core", "optimization", "ascend"],
+    "severity": "high",
+    "source": "triton-ascend-ops/tutorial/basic/006-tiling.py",
+    "created_at": "2026-03-17",
+    "usage_count": 0
+  }
+}
