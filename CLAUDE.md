@@ -25,9 +25,7 @@ Triton算子生成系统，支持Ascend NPU平台的算子开发、验证和优�
 
 ### Constraints
 
-- 目标平台：Ascend NPU（910B2）
-- Block大小：≤1024
-- UB使用：≤85KB/循环
+- 目标平台：Ascend NPU
 
 ### Always Do
 

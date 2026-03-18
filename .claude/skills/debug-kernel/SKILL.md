@@ -122,13 +122,11 @@ def check_edge_cases():
 
 **文件**: `.claude/data/guides/debugging-guide.md`
 
-**文件**: `.claude/data/guides/troubleshooting.md`
-
 | 问题类型 | 检索章节 |
 |---------|---------|
 | NaN问题 | `debugging-guide.md` §NaN诊断 |
-| 编译错误 | `troubleshooting.md` §编译错误 |
-| 运行时错误 | `troubleshooting.md` §运行时错误 |
+| 编译错误 | `debugging-guide.md` §常见问题排查 |
+| 运行时错误 | `debugging-guide.md` §常见问题排查 |
 
 ### 4.2 常见根因表
 

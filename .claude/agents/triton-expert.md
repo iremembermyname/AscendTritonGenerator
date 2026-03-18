@@ -73,7 +73,7 @@ Use this agent when:
 **知识库引用**：
 | 知识库 | 路径 | 用途 |
 |--------|------|------|
-| 优化技巧 | `data/guides/optimization-tips.md` | 优化技术 |
+| 优化技巧 | `data/guides/optimization-guide.md` | 优化技术 |
 | 优化案例 | `data/cases/optimization/` | 类似优化参考 |
 | 硬件约束 | `rules/ascend-hardware.md` | UB/核数限制 |
 
@@ -178,7 +178,9 @@ def test_operator():
 |------|------|------|
 | UB容量 | ≤ 85KB/循环 | 控制BLOCK_SIZE和变量数 |
 | Block大小 | ≤ 1024 | 最大并行度 |
-| Vector核数 | 108 | Grid规划 |
+| AI Core | 20-24（物理核） | tl.dot算子的Grid规划 |
+| Vector Core | 40-48（每AI Core含2个） | Vector-only算子的Grid规划 |
+| Cube Core | 20-24（每AI Core含1个） | 矩阵计算规划 |
 
 ## Common Patterns
 

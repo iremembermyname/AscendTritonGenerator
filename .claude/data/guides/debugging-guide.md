@@ -12,6 +12,7 @@
 4. [打印调试方法](#4-打印调试方法)
 5. [编译错误调试方法](#5-编译错误调试方法)
 6. [环境变量速查表](#6-环境变量速查表)
+7. [常见问题排查](#7-常见问题排查)
 
 ---
 
@@ -304,3 +305,136 @@ python your_triton_script.py
 | `MLIR_ENABLE_DUMP=1` | 启用 MLIR 高层 IR dump |
 | `TRITON_ENABLE_LLVM_DEBUG=1` | 启用 LLVM 后端调试日志 |
 | `LLVM_DEBUG_ONLY="xxx"` | 限制 LLVM 调试输出范围 |
+
+---
+
+## 7. 常见问题排查
+
+### 7.1 流水异常
+
+**症状**：kernel 执行时间远高于预期，msprof 显示 MTE 和 Vector 没有重叠执行。
+
+**排查**：
+- 检查是否使用了带 other 的 `tl.load`
+- 检查是否存在数据依赖
+- 检查循环体内是否有过多的 Scalar 运算
+
+**解决方案**：
+- 确保每次迭代的地址可独立计算
+- 将 load 逻辑统一写在一起
+
+---
+
+### 7.2 memref.alloc align 报错
+
+**报错示例**：
+```
+error: cannot align 0 axis for %83 = "memref.alloc"()...
+```
+
+**原因**：在计算之前进行 reshape 可能触发此错误。
+
+**解决方案**：在计算完成后再 reshape。
+
+```python
+# 错误：先 reshape 再计算
+t_cos = tl.load(...).reshape(1, half_rope_dim)
+h_cos = tl.load(...).reshape(1, half_rope_dim)
+cos = t_cos + h_cos  # 可能触发 align 错误
+
+# 正确：先计算再 reshape
+t_cos = tl.load(...)
+h_cos = tl.load(...)
+cos = t_cos + h_cos
+cos = cos.reshape(1, half_rope_dim)
+```
+
+---
+
+### 7.3 UB 溢出
+
+**症状**：运行时报错提示内存不足，或计算结果异常。
+
+**排查清单**：
+1. 重新计算 N：检查每次循环的最大处理量
+2. 统计所有变量：循环体内外通过 `tl.load` 加载的变量
+3. 检查一维 mask 问题：对二维 tensor 使用一维索引会占用大量 UB
+4. 精度降低：`bf16 → float32` 会使 UB 占用翻倍
+5. 减少同时存活的变量
+
+---
+
+### 7.4 if 分支报错
+
+**症状**：编译报错信息指向 if 判断条件本身。
+
+**常见原因**：
+1. 同名张量形状不一致
+2. 分支内使用了需要 constexpr 的操作
+
+```python
+# 错误：两个分支中 result 形状不同
+if condition:
+    result = tl.zeros((N, M), dtype=tl.float32)
+else:
+    result = tl.zeros((N, K), dtype=tl.float32)
+
+# 正确：统一形状
+if condition:
+    result = tl.zeros((N, M), dtype=tl.float32)
+else:
+    result = tl.zeros((N, M), dtype=tl.float32)
+```
+
+---
+
+### 7.5 constexpr 参数问题
+
+**症状**：编译报错提示参数类型不对。
+
+**涉及的函数**：
+- `reshape()`
+- `arange()`
+- `make_block_ptr()`
+- `extract_slice()` 的 offsets/sizes/strides
+- `insert_slice()` 的 offsets/sizes/strides
+- `tl.zeros()` 的 shape
+- `broadcast_to()` 的 shape
+
+**解决方案**：在 kernel 签名中将相关参数标注为 `tl.constexpr`。
+
+---
+
+### 7.6 性能退化排查
+
+优化后性能反而变差时的排查步骤：
+
+1. 确认正确性
+2. 检查 UB 是否溢出
+3. 检查流水并行
+4. 检查 Tokens 批处理的 N 值
+5. 检查 kernel 入参声明是否合适
+6. 逐步回退：二分法定位问题
+
+---
+
+### 7.7 编译超时
+
+**可能原因**：
+- kernel 逻辑过于复杂
+- 使用了过多的 `tl.constexpr` 参数
+
+**解决方案**：
+- 适当使用 `do_not_specialize` 减少编译组合
+- 简化 kernel 逻辑
+
+---
+
+## 8. 快速排查清单
+
+| 问题类型 | 排查项 |
+|---------|--------|
+| 编译错误 | if分支变量形状、constexpr参数、memref.alloc align |
+| 运行时错误 | UB溢出、内存连续性、数据类型 |
+| 性能问题 | 流水并行、N值计算、分核策略 |
+| 精度问题 | NaN/Inf、累加精度、数值稳定性 |

@@ -32,10 +32,19 @@
 │   ├── ascend-hardware.md
 │   └── triton-code.md
 └── data/            # 知识库
-    ├── syntax/
-    ├── templates/
-    ├── guides/
-    └── cases/
+    ├── syntax/      # 语法参考
+    │   ├── triton-syntax.md
+    │   └── ascend-extensions.md
+    ├── templates/   # 代码模板
+    │   └── code-templates.md
+    ├── guides/      # 指南文档
+    │   ├── optimization-guide.md
+    │   ├── precision-guide.md
+    │   └── debugging-guide.md
+    └── cases/       # 案例库
+        ├── conversion/
+        ├── optimization/
+        └── precision/
 ```
 
 ## Agents（领域专家）

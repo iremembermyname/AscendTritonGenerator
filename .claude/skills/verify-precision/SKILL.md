@@ -58,7 +58,7 @@ export LD_LIBRARY_PATH=/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/d
 
 ### 2.1 检索精度问题指南
 
-**文件**: `.claude/data/guides/precision-issues.md`
+**文件**: `.claude/data/guides/precision-guide.md`
 
 | 症状 | 检索章节 |
 |------|---------|

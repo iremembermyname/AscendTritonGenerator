@@ -76,7 +76,7 @@ Search the codebase and knowledge base systematically:
 1. **Check templates** - `.claude/data/templates/code-templates.md`
 2. **Check syntax reference** - `.claude/data/syntax/triton-syntax.md`
 3. **Check Ascend extensions** - `.claude/data/syntax/ascend-extensions.md`
-4. **Check optimization guides** - `.claude/data/guides/optimization-tips.md`
+4. **Check optimization guides** - `.claude/data/guides/optimization-guide.md`
 5. **Check similar cases** - `.claude/data/cases/` for relevant examples
 
 ### Phase 3: Plan Output
@@ -113,7 +113,7 @@ Search the codebase and knowledge base systematically:
 | Code Templates | `.claude/data/templates/code-templates.md` | Reference patterns |
 | Triton Syntax | `.claude/data/syntax/triton-syntax.md` | API reference |
 | Ascend Extensions | `.claude/data/syntax/ascend-extensions.md` | Platform-specific APIs |
-| Optimization Tips | `.claude/data/guides/optimization-tips.md` | Performance patterns |
+| Optimization Tips | `.claude/data/guides/optimization-guide.md` | Performance patterns |
 
 ### Success Criteria
 - [ ] Precision matches reference implementation (rtol=1e-3)
@@ -158,9 +158,8 @@ Search the codebase and knowledge base systematically:
 | File | Content | When to Reference |
 |------|---------|-------------------|
 | `data/guides/optimization-tips.md` | Memory access, UB, pipeline optimization | Performance tuning |
-| `data/guides/precision-issues.md` | NaN/Inf, precision loss diagnosis | Debugging precision |
+| `data/guides/precision-guide.md` | NaN/Inf, precision loss diagnosis | Debugging precision |
 | `data/guides/debugging-guide.md` | Debugging workflow | Troubleshooting |
-| `data/guides/troubleshooting.md` | Common issues and solutions | Problem resolution |
 
 ### Cases
 
@@ -178,7 +177,9 @@ Reference: `.claude/rules/ascend-hardware.md`
 |------------|-------|--------|
 | UB Capacity | ≤ 85KB per loop | Controls BLOCK_SIZE and variable count |
 | Block Size | ≤ 1024 | Maximum parallelism per program |
-| Vector Cores | 108 | Grid size planning |
+| AI Cores | 20-24 (physical) | Grid size for tl.dot operators |
+| Vector Cores | 40-48 (2 per AI Core) | Grid size for vector-only operators |
+| Cube Cores | 20-24 (1 per AI Core) | Matrix computation planning |
 
 ## Common Task Patterns
 

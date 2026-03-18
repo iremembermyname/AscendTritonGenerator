@@ -198,9 +198,9 @@ data/
 ├── templates/                 # 代码模板
 │   └── code-templates.md      # 常用算子模板
 ├── guides/                    # 指南文档
-│   ├── optimization-tips.md   # 性能优化技巧
-│   ├── precision-issues.md    # 精度问题指南
-│   └── troubleshooting.md     # 问题排查指南
+│   ├── optimization-guide.md  # 性能优化指南
+│   ├── precision-guide.md     # 精度问题指南
+│   └── debugging-guide.md     # 调试指南（含troubleshooting）
 └── cases/                     # 案例库
     ├── conversion/            # CUDA 转换案例
     ├── optimization/          # 性能优化案例
