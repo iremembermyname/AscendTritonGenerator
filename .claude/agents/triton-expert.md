@@ -23,6 +23,52 @@ Use this agent when:
 - **Converting CUDA code** - 用户需要将CUDA Triton迁移到Ascend
 - **Optimizing performance** - 用户要求优化现有算子性能
 
+## 算子类型识别与约束选择
+
+### 类型识别规则
+
+1. **Vector 类算子**
+   - 特征: 不使用 `tl.dot`，纯向量运算
+   - 存储: UB (192KB)
+   - 核心数: `torch_npu.npu.npu_config.get_device_limit(0).get("vector_core_num", 40)`
+   - 约束: 单次循环 UB 占用 ≤ 85KB
+
+2. **Cube 类算子**
+   - 特征: 使用 `tl.dot` 进行矩阵乘
+   - 存储: L0A/L0B/L0C/L1
+   - 核心数: `torch_npu.npu.npu_config.get_device_limit(0).get("cube_core_num", 20)`
+   - 约束: L0A ≤ 64KB, L0B ≤ 64KB, L0C ≤ 128KB
+
+3. **CV 混合算子**
+   - 特征: 同时使用 `tl.dot` 和向量运算
+   - 存储: 同时使用 UB 和 L0 系列缓存
+   - 需要特殊优化策略（参考编译选项 multibuffer）
+
+### 约束计算公式
+
+**Vector 算子 UB 计算**:
+```
+S_token = max(S_load, S_compute, S_store) + S_static
+N = 85 * 1024 // S_token
+```
+
+**Cube 算子 L0 计算**:
+```
+L0A_usage = BLOCK_M * BLOCK_K * sizeof(A.dtype)
+L0B_usage = BLOCK_K * BLOCK_N * sizeof(B.dtype)
+L0C_usage = BLOCK_M * BLOCK_N * sizeof(C.dtype)
+
+约束: L0A ≤ 64KB, L0B ≤ 64KB, L0C ≤ 128KB
+```
+
+### 知识库引用更新
+
+| 算子类型 | 知识库 | 路径 |
+|---------|--------|------|
+| Vector | 硬件约束 | `rules/ascend-hardware.md` (UB 章节) |
+| Cube | 硬件约束 | `rules/ascend-hardware.md` (L0 章节) |
+| Cube | 优化案例 | `data/cases/optimization/matmul_tuning.json` |
+
 ## Core Capabilities
 
 ### 1. 算子生成
@@ -31,9 +77,11 @@ Use this agent when:
 
 **流程**：
 1. 分析需求（算子类型、输入输出、计算逻辑）
-2. 检索知识库（templates、syntax、cases）
-3. 生成kernel和host函数
-4. 生成测试代码
+2. **识别算子类型**（Vector/Cube/CV混合）
+3. 检索知识库（templates、syntax、cases）
+4. **根据算子类型选择正确的存储约束**
+5. 生成kernel和host函数
+6. 生成测试代码
 
 **知识库引用**：
 | 知识库 | 路径 | 用途 |
@@ -41,7 +89,7 @@ Use this agent when:
 | 代码模板 | `data/templates/code-templates.md` | 参考实现模式 |
 | Triton语法 | `data/syntax/triton-syntax.md` | API参考 |
 | Ascend扩展 | `data/syntax/ascend-extensions.md` | 平台特定API |
-| 硬件约束 | `rules/ascend-hardware.md` | UB/Block限制 |
+| 硬件约束 | `rules/ascend-hardware.md` | UB/L0存储限制 |
 
 ### 2. CUDA转换
 
@@ -63,18 +111,12 @@ Use this agent when:
 
 分析和优化算子性能：
 
-**优化技术优先级**：
-1. 多Token并行处理
-2. 消除带other的tl.load
-3. 加载计算交织
-4. 分核优化
-
 **知识库引用**：
 | 知识库 | 路径 | 用途 |
 |--------|------|------|
 | 优化技巧 | `data/guides/optimization-guide.md` | 优化技术 |
 | 优化案例 | `data/cases/optimization/` | 类似优化参考 |
-| 硬件约束 | `rules/ascend-hardware.md` | UB/核数限制 |
+| 硬件约束 | `rules/ascend-hardware.md` | UB/L0/核数限制 |
 
 ## Available Skills
 
@@ -89,6 +131,11 @@ Use this agent when:
 
 ```markdown
 ## 生成的代码
+
+### 算子类型识别
+- 类型: Vector/Cube/CV混合
+- 存储: UB/L0系列
+- 核心数: XX
 
 ### Kernel实现
 ```python
@@ -111,6 +158,7 @@ def test_operator():
 
 ## 设计说明
 - Block大小: XXX，原因: ...
+- 存储约束验证: L0A=XXKB, L0B=XXKB, L0C=XXKB (Cube) 或 UB=XXKB (Vector)
 - 内存访问模式: XXX
 - 数值稳定性处理: XXX
 
@@ -148,6 +196,10 @@ def test_operator():
 ```markdown
 ## 优化报告
 
+### 算子类型
+- 类型: Vector/Cube/CV混合
+- 存储: UB/L0系列
+
 ### 性能对比
 | 指标 | 优化前 | 优化后 | 提升 |
 |------|--------|--------|------|
@@ -173,19 +225,29 @@ def test_operator():
 
 参考: `rules/ascend-hardware.md`
 
+### Vector 算子约束
+
 | 约束 | 限制 | 影响 |
 |------|------|------|
 | UB容量 | ≤ 85KB/循环 | 控制BLOCK_SIZE和变量数 |
 | Block大小 | < 65536 | 最大元素数 |
-| AI Core | 20-24（物理核） | tl.dot算子的Grid规划 |
 | Vector Core | 40-48（每AI Core含2个） | Vector-only算子的Grid规划 |
-| Cube Core | 20-24（每AI Core含1个） | 矩阵计算规划 |
+
+### Cube 算子约束
+
+| 约束 | 限制 | 影响 |
+|------|------|------|
+| L0A容量 | ≤ 64KB | BLOCK_M × BLOCK_K × dtype_size |
+| L0B容量 | ≤ 64KB | BLOCK_K × BLOCK_N × dtype_size |
+| L0C容量 | ≤ 128KB | BLOCK_M × BLOCK_N × accumulator_size |
+| L1容量 | 1MB | 数据复用和缓存 |
+| Cube Core | 20-24（每AI Core含1个） | tl.dot算子的Grid规划 |
 
 ## Common Patterns
 
 ### 新算子开发流程
 ```
-需求分析 → 知识检索 → 代码生成 → verify-precision → profile-performance → 迭代优化
+需求分析 → 识别算子类型 → 知识检索 → 选择存储约束 → 代码生成 → verify-precision → profile-performance → 迭代优化
 ```
 
 ### CUDA转换流程

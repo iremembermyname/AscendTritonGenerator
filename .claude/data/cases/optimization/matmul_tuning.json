@@ -3,7 +3,7 @@
   "case_type": "optimization",
   "title": "MatMul算子性能优化",
   "problem": {
-    "description": "MatMul算子性能不达标，需要优化",
+    "description": "MatMul算子性能不达标，需要优化分块策略以满足L0缓存约束",
     "symptoms": ["性能低于预期", "内存带宽利用率低"],
     "affected_apis": ["tl.dot", "tl.load", "tl.store"],
     "context": {
@@ -15,25 +15,37 @@
     }
   },
   "solution": {
-    "description": "通过调整分块大小和优化内存访问模式提升性能",
+    "description": "通过调整分块大小满足L0A/L0B/L0C约束，优化L1缓存复用",
     "techniques": [
-      "调整BLOCK_M/BLOCK_N/BLOCK_K",
-      "使用FP32累加器",
-      "优化内存访问模式"
+      "调整BLOCK_M/BLOCK_N/BLOCK_K以满足L0A/L0B/L0C约束",
+      "使用FP32累加器提高精度",
+      "优化L1缓存复用"
     ],
     "code_before": "BLOCK_M: tl.constexpr = 128\nBLOCK_N: tl.constexpr = 128\nBLOCK_K: tl.constexpr = 32",
-    "code_after": "BLOCK_M: tl.constexpr = 64\nBLOCK_N: tl.constexpr = 64\nBLOCK_K: tl.constexpr = 32\n\nacc = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)",
+    "code_after": "BLOCK_M: tl.constexpr = 64\nBLOCK_N: tl.constexpr = 64\nBLOCK_K: tl.constexpr = 32\n\nacc = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)\n\n# L0A: 64*32*2B = 4KB <= 64KB\n# L0B: 32*64*2B = 4KB <= 64KB\n# L0C: 64*64*4B = 16KB <= 128KB",
     "steps": [
-      "减小分块大小以控制UB占用",
+      "计算分块大小对应的L0缓存占用",
+      "确保L0A/L0B/L0C均满足容量约束",
       "使用FP32累加器提高精度",
-      "优化load/store顺序"
+      "优化load/store顺序以利用L1缓存"
     ],
-    "performance_after": "1.8 ms"
+    "performance_after": "1.8 ms",
+    "l0_constraints": {
+      "L0A_formula": "BLOCK_M * BLOCK_K * sizeof(dtype)",
+      "L0B_formula": "BLOCK_K * BLOCK_N * sizeof(dtype)",
+      "L0C_formula": "BLOCK_M * BLOCK_N * sizeof(accumulator)",
+      "example_calculation": {
+        "L0A": "64 * 32 * 2B = 4KB",
+        "L0B": "32 * 64 * 2B = 4KB",
+        "L0C": "64 * 64 * 4B = 16KB"
+      }
+    }
   },
   "metadata": {
-    "tags": ["matmul", "optimization", "performance", "ascend"],
+    "tags": ["matmul", "optimization", "performance", "ascend", "cube", "l0-cache"],
     "severity": "medium",
     "created_at": "2026-03-16",
+    "updated_at": "2026-03-18",
     "usage_count": 0
   }
 }
