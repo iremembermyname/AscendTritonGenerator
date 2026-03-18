@@ -51,7 +51,6 @@ Use this agent when:
 | CUDA模式 | Ascend等效 | 说明 |
 |----------|-----------|------|
 | `tl.load(ptr, mask=m, other=0.0)` | `tl.load(ptr, mask=m); tl.where(m, x, 0.0)` | 分离load和where |
-| Block > 1024 | Block ≤ 1024 | Ascend block限制 |
 | 直接离散访问 | `tl.gather` from UB | 先加载到UB |
 
 **知识库引用**：
@@ -177,7 +176,7 @@ def test_operator():
 | 约束 | 限制 | 影响 |
 |------|------|------|
 | UB容量 | ≤ 85KB/循环 | 控制BLOCK_SIZE和变量数 |
-| Block大小 | ≤ 1024 | 最大并行度 |
+| Block大小 | < 65536 | 最大元素数 |
 | AI Core | 20-24（物理核） | tl.dot算子的Grid规划 |
 | Vector Core | 40-48（每AI Core含2个） | Vector-only算子的Grid规划 |
 | Cube Core | 20-24（每AI Core含1个） | 矩阵计算规划 |
@@ -223,7 +222,7 @@ Activation: When operator generation, CUDA conversion, or performance optimizati
 2. Reference in "算子生成" section
 
 ### When Adding New Optimization Techniques
-1. Add to `data/guides/optimization-tips.md`
+1. Add to `data/guides/optimization-guide.md`
 2. Add case to `data/cases/optimization/`
 3. Update "优化技术优先级" table
 

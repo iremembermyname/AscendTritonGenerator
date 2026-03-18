@@ -65,9 +65,6 @@ def quick_diagnosis(output, expected=None):
 ```bash
 # 启用详细日志
 export TRITON_INTERPRET=1  # 使用解释器模式
-
-# CUDA兼容模式（如果需要）
-export CUDA_LAUNCH_BLOCKING=1
 ```
 
 ### 2.2 NPU环境

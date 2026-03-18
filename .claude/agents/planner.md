@@ -157,7 +157,7 @@ Search the codebase and knowledge base systematically:
 
 | File | Content | When to Reference |
 |------|---------|-------------------|
-| `data/guides/optimization-tips.md` | Memory access, UB, pipeline optimization | Performance tuning |
+| `data/guides/optimization-guide.md` | Memory access, UB, pipeline optimization | Performance tuning |
 | `data/guides/precision-guide.md` | NaN/Inf, precision loss diagnosis | Debugging precision |
 | `data/guides/debugging-guide.md` | Debugging workflow | Troubleshooting |
 
@@ -176,7 +176,7 @@ Reference: `.claude/rules/ascend-hardware.md`
 | Constraint | Limit | Impact |
 |------------|-------|--------|
 | UB Capacity | ≤ 85KB per loop | Controls BLOCK_SIZE and variable count |
-| Block Size | ≤ 1024 | Maximum parallelism per program |
+| Block Size | < 65536 | Maximum elements per block |
 | AI Cores | 20-24 (physical) | Grid size for tl.dot operators |
 | Vector Cores | 40-48 (2 per AI Core) | Grid size for vector-only operators |
 | Cube Cores | 20-24 (1 per AI Core) | Matrix computation planning |
