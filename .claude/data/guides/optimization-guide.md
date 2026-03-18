@@ -150,28 +150,6 @@ validate_cube_blocks(BLOCK_M, BLOCK_K, BLOCK_N)
 
 CV 混合算子指运算过程中既使用了 AI Core (Cube) 又使用了 Vector Core，需要特殊优化策略。
 
-参考：`triton-ascend/docs/zh/migration_guide/architecture_difference.md`
-
-**autotune 编译选项**：
-
-| 选项 | 说明 | 默认值 |
-|------|------|--------|
-| `multibuffer` | 开启流水并行数据搬运 | true |
-| `limit_auto_multi_buffer_only_for_local_buffer` | CV算子优化项，cube搬出优化 | None |
-| `tile_mix_vector_loop` | CV算子优化项，vector切分份数 | None，如 [2,4,8] |
-| `tile_mix_cube_loop` | CV算子优化项，cube切分份数 | None，如 [2,4,8] |
-
-```python
-# autotune 配置示例
-@triton.autotune(
-    configs=[
-        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 64, 'multibuffer': True}),
-        triton.Config({'BLOCK_M': 128, 'BLOCK_N': 128, 'BLOCK_K': 64, 'multibuffer': True, 'tile_mix_vector_loop': [2, 4]}),
-    ],
-    key=['M', 'N', 'K'],
-)
-```
-
 ---
 
 ## 3. 流水线优化
