@@ -11,7 +11,8 @@ from .utils import (
     EvalResult,
     load_pytorch_model,
     load_triton_model,
-    check_correctness,
+    check_correctness_once,
+    measure_performance,
     get_available_levels,
 )
 
@@ -23,6 +24,7 @@ __all__ = [
     "EvalResult",
     "load_pytorch_model",
     "load_triton_model",
-    "check_correctness",
+    "check_correctness_once",
+    "measure_performance",
     "get_available_levels",
 ]
