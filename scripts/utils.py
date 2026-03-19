@@ -7,6 +7,7 @@ import sys
 import tempfile
 import importlib
 import importlib.util
+import time
 from typing import Tuple, Dict, Any, Optional, List
 from dataclasses import dataclass
 
@@ -21,6 +22,9 @@ class EvalResult:
     correctness: bool = False
     max_diff: float = 0.0
     avg_diff: float = 0.0
+    pytorch_time: float = 0.0
+    triton_time: float = 0.0
+    speedup: float = 0.0
     error_message: str = ""
 
 
@@ -58,14 +62,13 @@ def load_triton_model(file_path: str, entry_point: str = "ModelNew") -> nn.Modul
     return model
 
 
-def check_correctness(
+def check_correctness_once(
     pytorch_model: nn.Module,
     triton_model: nn.Module,
     get_inputs: callable,
-    num_trials: int = 5,
     verbose: bool = True,
 ) -> Tuple[bool, float, float, str]:
-    """Check correctness between PyTorch and Triton implementations"""
+    """Check correctness once between PyTorch and Triton implementations"""
 
     dtype = torch.float16
     tolerance = DEFAULT_TOLERANCE
@@ -77,70 +80,98 @@ def check_correctness(
     pytorch_model.eval()
     triton_model.eval()
 
-    max_diffs = []
-    passed = 0
-    error_message = ""
+    try:
+        with torch.no_grad():
+            inputs = get_inputs()
+            inputs = [x.to(device=device, dtype=dtype) for x in inputs]
+
+            torch.npu.synchronize()
+            pytorch_output = pytorch_model(*inputs)
+            torch.npu.synchronize()
+
+            torch.npu.synchronize()
+            triton_output = triton_model(*inputs)
+            torch.npu.synchronize()
+
+            if pytorch_output.shape != triton_output.shape:
+                error_msg = f"Shape mismatch: PyTorch {pytorch_output.shape} vs Triton {triton_output.shape}"
+                if verbose:
+                    print(f"[FAIL] {error_msg}")
+                return False, 0.0, 0.0, error_msg
+
+            max_diff = torch.max(torch.abs(pytorch_output - triton_output)).item()
+            avg_diff = torch.mean(torch.abs(pytorch_output - triton_output)).item()
+
+            if not torch.allclose(pytorch_output, triton_output, atol=tolerance, rtol=tolerance):
+                if verbose:
+                    print(f"[FAIL] max_diff={max_diff:.6f}, avg_diff={avg_diff:.6f}")
+                return False, max_diff, avg_diff, ""
+            else:
+                if verbose:
+                    print(f"[PASS] max_diff={max_diff:.6f}, avg_diff={avg_diff:.6f}")
+                return True, max_diff, avg_diff, ""
+
+    except Exception as e:
+        error_msg = f"Runtime error: {str(e)}"
+        if verbose:
+            print(f"[ERROR] {error_msg}")
+        return False, 0.0, 0.0, error_msg
+
+
+def measure_performance(
+    model: nn.Module,
+    get_inputs: callable,
+    num_trials: int = 100,
+    warmup: int = 10,
+    verbose: bool = True,
+) -> float:
+    """Measure average runtime of a model"""
+
+    dtype = torch.float16
+    device = DEFAULT_DEVICE
+
+    model = model.to(device=device, dtype=dtype)
+    model.eval()
 
     with torch.no_grad():
-        for trial in range(num_trials):
-            try:
-                inputs = get_inputs()
-                inputs = [x.to(device=device, dtype=dtype) for x in inputs]
+        inputs = get_inputs()
+        inputs = [x.to(device=device, dtype=dtype) for x in inputs]
 
-                torch.npu.synchronize()
-                pytorch_output = pytorch_model(*inputs)
-                torch.npu.synchronize()
+        # Warmup
+        if verbose:
+            print(f"  Warmup ({warmup} iterations)...")
+        for _ in range(warmup):
+            _ = model(*inputs)
+        torch.npu.synchronize()
 
-                torch.npu.synchronize()
-                triton_output = triton_model(*inputs)
-                torch.npu.synchronize()
+        # Measure
+        if verbose:
+            print(f"  Measuring ({num_trials} iterations)...")
+        times = []
+        for _ in range(num_trials):
+            torch.npu.synchronize()
+            start = time.perf_counter()
+            _ = model(*inputs)
+            torch.npu.synchronize()
+            end = time.perf_counter()
+            times.append((end - start) * 1000)  # Convert to ms
 
-                if pytorch_output.shape != triton_output.shape:
-                    if verbose:
-                        print(f"[FAIL] Trial {trial}: Shape mismatch")
-                    continue
-
-                if not torch.allclose(pytorch_output, triton_output, atol=tolerance, rtol=tolerance):
-                    max_diff = torch.max(torch.abs(pytorch_output - triton_output)).item()
-                    avg_diff = torch.mean(torch.abs(pytorch_output - triton_output)).item()
-                    max_diffs.append(max_diff)
-                    if verbose:
-                        print(f"[FAIL] Trial {trial}: max_diff={max_diff:.6f}, avg_diff={avg_diff:.6f}")
-                else:
-                    passed += 1
-                    if verbose:
-                        print(f"[PASS] Trial {trial}")
-
-            except Exception as e:
-                error_message = f"Runtime error in trial {trial}: {str(e)}"
-                if verbose:
-                    print(f"[ERROR] {error_message}")
-                continue
-
-    if max_diffs:
-        max_diff = max(max_diffs)
-        avg_diff = sum(max_diffs) / len(max_diffs)
-    else:
-        max_diff = 0.0
-        avg_diff = 0.0
-
-    correctness = passed == num_trials and passed > 0
-    return correctness, max_diff, avg_diff, error_message
+    avg_time = sum(times) / len(times)
+    return avg_time
 
 
 def eval_single_operator(
     pytorch_file: str,
     triton_file: str,
-    num_trials: int = 5,
     verbose: bool = True,
 ) -> EvalResult:
     """
     Evaluate a single operator: PyTorch vs Triton
+    First check correctness (1 trial), then measure performance if passed.
 
     Args:
         pytorch_file: Path to PyTorch kernel file
         triton_file: Path to Triton kernel file
-        num_trials: Number of correctness trials
         verbose: Print verbose output
 
     Returns:
@@ -165,14 +196,14 @@ def eval_single_operator(
             print(f"[ERROR] {result.error_message}")
         return result
 
+    # Step 1: Check correctness (1 trial)
     try:
         if verbose:
-            print(f"\nChecking correctness ({num_trials} trials)...")
-        correctness, max_diff, avg_diff, error_msg = check_correctness(
+            print(f"\n[1/2] Checking correctness...")
+        correctness, max_diff, avg_diff, error_msg = check_correctness_once(
             pytorch_model,
             triton_model,
             get_inputs,
-            num_trials=num_trials,
             verbose=verbose,
         )
         result.correctness = correctness
@@ -181,24 +212,46 @@ def eval_single_operator(
 
         if error_msg:
             result.error_message = error_msg
-            if verbose:
-                print(f"[FAIL] {error_msg}")
             return result
 
         if not correctness:
-            result.error_message = f"Correctness failed: max_diff={max_diff:.6f}"
-            if verbose:
-                print(f"[FAIL] Correctness check failed")
+            result.error_message = f"Correctness check failed: max_diff={max_diff:.6f}"
             return result
-
-        if verbose:
-            print(f"[PASS] Correctness check passed")
 
     except Exception as e:
         result.error_message = f"Correctness check error: {str(e)}"
         if verbose:
             print(f"[ERROR] {result.error_message}")
         return result
+
+    # Step 2: Measure performance (only if correctness passed)
+    try:
+        if verbose:
+            print(f"\n[2/2] Measuring performance...")
+            print(f"  PyTorch:")
+        result.pytorch_time = measure_performance(
+            pytorch_model, get_inputs, verbose=verbose
+        )
+
+        if verbose:
+            print(f"  Triton:")
+        result.triton_time = measure_performance(
+            triton_model, get_inputs, verbose=verbose
+        )
+
+        if result.triton_time > 0:
+            result.speedup = result.pytorch_time / result.triton_time
+
+        if verbose:
+            print(f"\n  Performance Results:")
+            print(f"    PyTorch: {result.pytorch_time:.4f} ms")
+            print(f"    Triton:  {result.triton_time:.4f} ms")
+            print(f"    Speedup: {result.speedup:.2f}x")
+
+    except Exception as e:
+        result.error_message = f"Performance measurement error: {str(e)}"
+        if verbose:
+            print(f"[ERROR] {result.error_message}")
 
     return result
 
@@ -218,7 +271,6 @@ def eval_level(
     pytorch_dir: str,
     triton_dir: str,
     level: str,
-    num_trials: int = 5,
     verbose: bool = False,
 ) -> Dict[str, EvalResult]:
     """
@@ -228,7 +280,6 @@ def eval_level(
         pytorch_dir: Base directory for PyTorch kernels
         triton_dir: Base directory for Triton kernels
         level: Level name (e.g., "level1", "level2")
-        num_trials: Number of correctness trials
         verbose: Print verbose output
 
     Returns:
@@ -263,13 +314,11 @@ def eval_level(
                 print(f"[SKIP] {operator_name}: Triton file not found")
             continue
 
-        if verbose:
-            print(f"\n--- Evaluating: {operator_name} ---")
+        print(f"\n--- Evaluating: {operator_name} ---")
 
         result = eval_single_operator(
             os.path.join(level_pytorch_dir, pytorch_file),
             triton_file,
-            num_trials=num_trials,
             verbose=verbose,
         )
 
@@ -282,7 +331,6 @@ def eval_all_levels(
     pytorch_dir: str,
     triton_dir: str,
     levels: Optional[List[str]] = None,
-    num_trials: int = 5,
     verbose: bool = False,
 ) -> Dict[str, Dict[str, EvalResult]]:
     """
@@ -292,7 +340,6 @@ def eval_all_levels(
         pytorch_dir: Base directory for PyTorch kernels
         triton_dir: Base directory for Triton kernels
         levels: List of levels to evaluate, or None for all
-        num_trials: Number of correctness trials
         verbose: Print verbose output
 
     Returns:
@@ -309,7 +356,6 @@ def eval_all_levels(
             pytorch_dir,
             triton_dir,
             level,
-            num_trials=num_trials,
             verbose=verbose,
         )
         all_results[level] = level_results
@@ -319,9 +365,9 @@ def eval_all_levels(
 
 def print_summary(all_results: Dict[str, Dict[str, EvalResult]]) -> None:
     """Print summary of evaluation results"""
-    print("\n" + "=" * 70)
+    print("\n" + "=" * 80)
     print("EVALUATION SUMMARY")
-    print("=" * 70)
+    print("=" * 80)
 
     total_operators = 0
     total_correct = 0
@@ -341,17 +387,19 @@ def print_summary(all_results: Dict[str, Dict[str, EvalResult]]) -> None:
 
         print(f"  Operators: {level_total}, Correct: {level_correct} ({100*level_correct/level_total:.1f}%)")
 
-        print(f"\n  {'Operator':<30} {'Correct':<10} {'Max Diff'}")
-        print(f"  {'-'*50}")
+        print(f"\n  {'Operator':<25} {'Correct':<8} {'PyTorch(ms)':<12} {'Triton(ms)':<12} {'Speedup':<10}")
+        print(f"  {'-'*75}")
 
         for name, result in sorted(results.items()):
             correct_str = "pass" if result.correctness else "fail"
-            max_diff_str = f"{result.max_diff:.2e}" if result.max_diff > 0 else "-"
-            print(f"  {name:<30} {correct_str:<10} {max_diff_str}")
+            pytorch_time_str = f"{result.pytorch_time:.4f}" if result.pytorch_time > 0 else "-"
+            triton_time_str = f"{result.triton_time:.4f}" if result.triton_time > 0 else "-"
+            speedup_str = f"{result.speedup:.2f}x" if result.speedup > 0 else "-"
+            print(f"  {name:<25} {correct_str:<8} {pytorch_time_str:<12} {triton_time_str:<12} {speedup_str:<10}")
 
-    print("\n" + "=" * 70)
+    print("\n" + "=" * 80)
     print("OVERALL SUMMARY")
-    print("=" * 70)
+    print("=" * 80)
     print(f"Total operators: {total_operators}")
     print(f"Correct:         {total_correct} ({100*total_correct/total_operators:.1f}%)")
-    print("=" * 70)
+    print("=" * 80)
