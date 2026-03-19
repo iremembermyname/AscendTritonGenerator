@@ -73,11 +73,11 @@ Good: "Should I prioritize memory efficiency or compute efficiency?"
 
 Search the codebase and knowledge base systematically:
 
-1. **Check templates** - `.claude/data/templates/code-templates.md`
-2. **Check syntax reference** - `.claude/data/syntax/triton-syntax.md`
-3. **Check Ascend extensions** - `.claude/data/syntax/ascend-extensions.md`
-4. **Check optimization guides** - `.claude/data/guides/optimization-guide.md`
-5. **Check similar cases** - `.claude/data/cases/` for relevant examples
+1. **Check templates** - `.trae/data/templates/code-templates.md`
+2. **Check syntax reference** - `.trae/data/syntax/triton-syntax.md`
+3. **Check Ascend extensions** - `.trae/data/syntax/ascend-extensions.md`
+4. **Check optimization guides** - `.trae/data/guides/optimization-guide.md`
+5. **Check similar cases** - `.trae/data/cases/` for relevant examples
 
 ### Phase 3: Plan Output
 
@@ -110,10 +110,10 @@ Search the codebase and knowledge base systematically:
 ### Knowledge Resources
 | Resource | Location | Purpose |
 |----------|----------|---------|
-| Code Templates | `.claude/data/templates/code-templates.md` | Reference patterns |
-| Triton Syntax | `.claude/data/syntax/triton-syntax.md` | API reference |
-| Ascend Extensions | `.claude/data/syntax/ascend-extensions.md` | Platform-specific APIs |
-| Optimization Tips | `.claude/data/guides/optimization-guide.md` | Performance patterns |
+| Code Templates | `.trae/data/templates/code-templates.md` | Reference patterns |
+| Triton Syntax | `.trae/data/syntax/triton-syntax.md` | API reference |
+| Ascend Extensions | `.trae/data/syntax/ascend-extensions.md` | Platform-specific APIs |
+| Optimization Tips | `.trae/data/guides/optimization-guide.md` | Performance patterns |
 
 ### Success Criteria
 - [ ] Precision matches reference implementation (rtol=1e-3)
@@ -171,7 +171,7 @@ Search the codebase and knowledge base systematically:
 
 ## Hardware Constraints
 
-Reference: `.claude/rules/ascend-hardware.md`
+Reference: `.trae/rules/ascend-hardware.md`
 
 | Constraint | Limit | Impact |
 |------------|-------|--------|
@@ -231,7 +231,7 @@ ______________________________________________________________________
                             MAINTAINER GUIDE
 ================================================================================
 
-Location: .claude/agents/planner.md
+Location: .trae/agents/planner.md
 Activation: Automatic (PROACTIVE) when complex tasks detected
 
 ## Design Philosophy

@@ -47,13 +47,13 @@ allowed-tools: Read, Grep, Glob, Write, Edit
 
 | 类型 | 目标位置 | 格式 |
 |------|---------|------|
-| 语法文档 | `.claude/data/syntax/` | Markdown |
-| 模板文档 | `.claude/data/templates/` | Markdown |
-| 指南文档 | `.claude/data/guides/` | Markdown |
-| 精度案例 | `.claude/data/cases/precision/` | JSON |
-| 优化案例 | `.claude/data/cases/optimization/` | JSON |
-| 转换案例 | `.claude/data/cases/conversion/` | JSON |
-| 规则 | `.claude/rules/` | Markdown |
+| 语法文档 | `.trae/data/syntax/` | Markdown |
+| 模板文档 | `.trae/data/templates/` | Markdown |
+| 指南文档 | `.trae/data/guides/` | Markdown |
+| 精度案例 | `.trae/data/cases/precision/` | JSON |
+| 优化案例 | `.trae/data/cases/optimization/` | JSON |
+| 转换案例 | `.trae/data/cases/conversion/` | JSON |
+| 规则 | `.trae/rules/` | Markdown |
 
 ### Step 4: Confirm Addition
 

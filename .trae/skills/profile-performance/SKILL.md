@@ -104,7 +104,7 @@ if __name__ == "__main__":
 
 ### 4.1 知识检索
 
-**文件**: `.claude/data/guides/optimization-guide.md`
+**文件**: `.trae/data/guides/optimization-guide.md`
 
 | 瓶颈类型 | 检索章节 |
 |---------|---------|
@@ -115,7 +115,7 @@ if __name__ == "__main__":
 
 ### 4.2 案例检索
 
-**目录**: `.claude/data/cases/optimization/`
+**目录**: `.trae/data/cases/optimization/`
 
 | 案例文件 | 适用场景 |
 |---------|---------|

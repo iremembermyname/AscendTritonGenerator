@@ -267,7 +267,7 @@ ______________________________________________________________________
                             MAINTAINER GUIDE
 ================================================================================
 
-Location: .claude/agents/triton-expert.md
+Location: .trae/agents/triton-expert.md
 Activation: When operator generation, CUDA conversion, or performance optimization detected
 
 ## Design Philosophy

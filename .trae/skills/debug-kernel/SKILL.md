@@ -117,7 +117,7 @@ def check_edge_cases():
 
 ### 4.1 知识检索
 
-**文件**: `.claude/data/guides/debugging-guide.md`
+**文件**: `.trae/data/guides/debugging-guide.md`
 
 | 问题类型 | 检索章节 |
 |---------|---------|
@@ -175,7 +175,7 @@ result = acc.to(tl.bfloat16)
 
 ### 5.3 案例检索
 
-**目录**: `.claude/data/cases/precision/`
+**目录**: `.trae/data/cases/precision/`
 
 ---
 
