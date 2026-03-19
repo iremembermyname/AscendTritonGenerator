@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
+import torch_npu
 
 
 @dataclass
@@ -27,15 +28,6 @@ class EvalResult:
 DEFAULT_PRECISION = "fp16"
 DEFAULT_DEVICE = "npu"
 DEFAULT_TOLERANCE = 1e-2  # fp16 tolerance
-
-
-def get_device_module():
-    """Get NPU device module"""
-    try:
-        import torch_npu
-        return torch_npu
-    except ImportError:
-        raise ImportError("torch_npu not installed. Please install it for NPU support.")
 
 
 def load_pytorch_model(file_path: str) -> Tuple[nn.Module, callable, callable]:
@@ -78,7 +70,6 @@ def check_correctness(
     dtype = torch.float16
     tolerance = DEFAULT_TOLERANCE
     device = DEFAULT_DEVICE
-    device_module = get_device_module()
 
     pytorch_model = pytorch_model.to(device=device, dtype=dtype)
     triton_model = triton_model.to(device=device, dtype=dtype)
@@ -96,13 +87,13 @@ def check_correctness(
                 inputs = get_inputs()
                 inputs = [x.to(device=device, dtype=dtype) for x in inputs]
 
-                device_module.synchronize()
+                torch.npu.synchronize()
                 pytorch_output = pytorch_model(*inputs)
-                device_module.synchronize()
+                torch.npu.synchronize()
 
-                device_module.synchronize()
+                torch.npu.synchronize()
                 triton_output = triton_model(*inputs)
-                device_module.synchronize()
+                torch.npu.synchronize()
 
                 if pytorch_output.shape != triton_output.shape:
                     if verbose:
