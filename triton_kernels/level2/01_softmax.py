@@ -9,6 +9,7 @@ def softmax_kernel(
     x_ptr,
     output_ptr,
     row_stride,
+    n_rows,
     n_cols,
     BLOCK_SIZE: tl.constexpr,
 ):
@@ -41,7 +42,7 @@ def triton_softmax(x: torch.Tensor) -> torch.Tensor:
     # NPU只有20个核心，限制grid大小
     NPU_CORES = 20
     grid = (min(n_rows, NPU_CORES),)
-    softmax_kernel[grid](x_2d, output, x_2d.stride(0), n_cols, BLOCK_SIZE=BLOCK_SIZE)
+    softmax_kernel[grid](x_2d, output, x_2d.stride(0), n_rows, n_cols, BLOCK_SIZE=BLOCK_SIZE)
     # 恢复原始shape
     return output.reshape(original_shape)
 
