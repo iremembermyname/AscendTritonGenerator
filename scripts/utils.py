@@ -345,7 +345,7 @@ def print_summary(all_results: Dict[str, Dict[str, EvalResult]]) -> None:
         print(f"  {'-'*50}")
 
         for name, result in sorted(results.items()):
-            correct_str = "✓" if result.correctness else "✗"
+            correct_str = "pass" if result.correctness else "fail"
             max_diff_str = f"{result.max_diff:.2e}" if result.max_diff > 0 else "-"
             print(f"  {name:<30} {correct_str:<10} {max_diff_str}")
 
