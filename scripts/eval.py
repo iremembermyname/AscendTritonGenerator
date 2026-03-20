@@ -3,10 +3,11 @@ Evaluation Script for Triton Operators
 评测 Triton 算子
 
 Usage:
-    python scripts/eval.py                    # 评测所有 level
-    python scripts/eval.py --level level1     # 评测指定 level
-    python scripts/eval.py --list             # 列出所有可用 levels
-    python scripts/eval.py --verbose          # 详细输出
+    python scripts/eval.py                              # 评测所有 level
+    python scripts/eval.py --level level1               # 评测指定 level
+    python scripts/eval.py --level level1 --operator 01_relu   # 评测单个算子
+    python scripts/eval.py --list                       # 列出所有可用 levels
+    python scripts/eval.py --verbose                    # 详细输出
 """
 
 import argparse
@@ -32,6 +33,12 @@ def main():
         type=str,
         default=None,
         help="Specific level to evaluate (e.g., level1, level2). If not specified, evaluates all levels.",
+    )
+    parser.add_argument(
+        "--operator",
+        type=str,
+        default=None,
+        help="Specific operator to evaluate (e.g., 01_relu). Must be used with --level.",
     )
     parser.add_argument(
         "--list",
@@ -62,6 +69,47 @@ def main():
             print(f"  - {level}")
         return 0
 
+    # 评测单个算子
+    if args.level and args.operator:
+        pytorch_file = os.path.join(pytorch_dir, args.level, f"{args.operator}.py")
+        triton_file = os.path.join(triton_dir, args.level, f"{args.operator}.py")
+
+        if not os.path.exists(pytorch_file):
+            print(f"[ERROR] PyTorch file not found: {pytorch_file}")
+            return 1
+        if not os.path.exists(triton_file):
+            print(f"[ERROR] Triton file not found: {triton_file}")
+            return 1
+
+        print(f"\n{'='*70}")
+        print(f"Evaluating single operator: {args.level}/{args.operator}")
+        print(f"{'='*70}")
+
+        result = eval_single_operator(
+            pytorch_file=pytorch_file,
+            triton_file=triton_file,
+            verbose=args.verbose,
+        )
+
+        # 打印单个算子结果
+        print("\n" + "=" * 70)
+        print("RESULT")
+        print("=" * 70)
+        print(f"Compiled:    {result.compiled}")
+        print(f"Correct:     {result.correctness}")
+        print(f"Max Diff:    {result.max_diff:.2e}")
+        print(f"Avg Diff:    {result.avg_diff:.2e}")
+        if result.pytorch_time > 0:
+            print(f"PyTorch:     {result.pytorch_time:.4f} ms")
+            print(f"Triton:      {result.triton_time:.4f} ms")
+            print(f"Speedup:     {result.speedup:.2f}x")
+        if result.error_message:
+            print(f"Error:       {result.error_message}")
+        print("=" * 70)
+
+        return 0 if result.correctness else 1
+
+    # 评测指定level
     if args.level:
         results = {}
         results[args.level] = eval_level(
@@ -71,6 +119,7 @@ def main():
             verbose=args.verbose,
         )
     else:
+        # 评测所有level
         results = eval_all_levels(
             pytorch_dir=pytorch_dir,
             triton_dir=triton_dir,
