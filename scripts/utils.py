@@ -8,6 +8,8 @@ import tempfile
 import importlib
 import importlib.util
 import time
+import csv
+from datetime import datetime
 from typing import Tuple, Dict, Any, Optional, List
 from dataclasses import dataclass
 
@@ -142,7 +144,7 @@ def measure_performance(
             print(f"  Warmup ({warmup} iterations)...")
         for _ in range(warmup):
             _ = model(*inputs)
-        torch.npu.synchronize()
+            torch.npu.synchronize()
 
         # Measure
         if verbose:
@@ -403,3 +405,33 @@ def print_summary(all_results: Dict[str, Dict[str, EvalResult]]) -> None:
     print(f"Total operators: {total_operators}")
     print(f"Correct:         {total_correct} ({100*total_correct/total_operators:.1f}%)")
     print("=" * 80)
+
+
+def save_results_to_csv(all_results: Dict[str, Dict[str, EvalResult]], output_dir: str = ".") -> str:
+    """Save evaluation results to CSV file with timestamp"""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"eval_result_{timestamp}.csv"
+    filepath = os.path.join(output_dir, filename)
+
+    with open(filepath, 'w', newline='') as csvfile:
+        fieldnames = ['level', 'operator', 'compiled', 'correctness', 'max_diff', 'avg_diff',
+                      'pytorch_time_ms', 'triton_time_ms', 'speedup', 'error_message']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+
+        writer.writeheader()
+        for level, results in all_results.items():
+            for name, result in sorted(results.items()):
+                writer.writerow({
+                    'level': level,
+                    'operator': name,
+                    'compiled': result.compiled,
+                    'correctness': result.correctness,
+                    'max_diff': result.max_diff,
+                    'avg_diff': result.avg_diff,
+                    'pytorch_time_ms': result.pytorch_time,
+                    'triton_time_ms': result.triton_time,
+                    'speedup': result.speedup,
+                    'error_message': result.error_message
+                })
+
+    return filepath

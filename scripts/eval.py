@@ -21,7 +21,9 @@ from scripts.utils import (
     eval_all_levels,
     eval_single_operator,
     print_summary,
+    save_results_to_csv,
     get_available_levels,
+    EvalResult,
 )
 
 
@@ -107,6 +109,11 @@ def main():
             print(f"Error:       {result.error_message}")
         print("=" * 70)
 
+        # 保存单个算子结果到CSV
+        results = {args.level: {args.operator: result}}
+        csv_path = save_results_to_csv(results, output_dir=base_dir)
+        print(f"\nResults saved to: {csv_path}")
+
         return 0 if result.correctness else 1
 
     # 评测指定level
@@ -127,6 +134,10 @@ def main():
         )
 
     print_summary(results)
+
+    # 保存结果到CSV
+    csv_path = save_results_to_csv(results, output_dir=base_dir)
+    print(f"\nResults saved to: {csv_path}")
 
     return 0
 
