@@ -14,13 +14,11 @@ for level_dir in "$PYTORCH_DIR"/level*/; do
         operator=$(basename "$pytorch_file" .py)
         triton_file="$TRITON_DIR/$level/$operator.py"
         
-        # 如果Triton算子不存在，进行转换
-        if [ ! -f "$triton_file" ]; then
-            echo "Converting: $level/$operator"
-            mkdir -p "$TRITON_DIR/$level"
-            
-            # 调用Claude Code进行转换
-            PROMPT="你是一名专业的AI算子优化工程师，擅长将PyTorch算子转换为高性能的Triton算子。
+        echo "Converting: $level/$operator"
+        mkdir -p "$TRITON_DIR/$level"
+        
+        # 调用Claude Code进行转换
+        PROMPT="你是一名专业的AI算子优化工程师，擅长将PyTorch算子转换为高性能的Triton算子。
 
 任务：将 pytorch_kernels/$level/$operator.py 转换为 triton_kernels/$level/$operator.py
 
@@ -32,9 +30,8 @@ for level_dir in "$PYTORCH_DIR"/level*/; do
 5. 生成的代码要高效，性能尽可能超越PyTorch基线
 
 请直接生成完整的Triton实现代码并保存到目标路径。"
-            
-            claude -p "$PROMPT" --dangerously-skip-permissions
-        fi
+        
+        claude -p "$PROMPT" --dangerously-skip-permissions
     done
 done
 
