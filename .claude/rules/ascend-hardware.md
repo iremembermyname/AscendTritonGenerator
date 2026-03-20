@@ -169,21 +169,31 @@ L0C_usage = BLOCK_M * BLOCK_N * 4  # 128 * 128 * 4 = 65536 bytes = 64KB ✓
 
 ## 7. 流水并行约束
 
+### 7.1 Vector 算子优化
+
 | 操作 | 影响 | 替代方案 |
 |------|------|---------|
 | `tl.load` with mask | MTE 等待 Vector 生成 mask | mask 预计算 |
 | `tl.load` with other | 内部调用 tl.where，阻止 load 并行 | 去掉 other，手动 tl.where |
 | 大量 Scalar 计算 | Scalar 流水成为瓶颈 | 预计算、tl.arange 索引 |
 
-**错误示例**：
+**Vector 算子正确示例**：
 ```python
-x = tl.load(ptr + offsets, mask=mask, other=0.0)  # 影响流水线
+# 分离 load 和 where，优化流水线
+x = tl.load(ptr + offsets, mask=mask)
+x = tl.where(mask, x, 0.0)
 ```
 
-**正确示例**：
+### 7.2 Cube 算子优化
+
+**注意**：Cube 算子（使用 `tl.dot`）分离 `tl.where` 可能导致编译错误，应使用 `other` 参数。
+
+**Cube 算子正确示例**：
 ```python
-x = tl.load(ptr + offsets, mask=mask)
-x = tl.where(mask, x, 0.0)  # 分离操作
+# 使用 other 参数，避免编译错误
+a = tl.load(a_ptr + offsets, mask=mask, other=0.0)
+b = tl.load(b_ptr + offsets, mask=mask, other=0.0)
+acc += tl.dot(a, b)
 ```
 
 ---
