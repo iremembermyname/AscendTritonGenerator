@@ -7,11 +7,11 @@ Triton算子生成系统，支持Ascend NPU平台的算子开发、验证和优�
 **技术栈**：Triton, PyTorch, Ascend NPU
 
 **核心目录**：
-- `.claude/agents/` - 智能体（复杂任务处理）
-- `.claude/skills/` - 技能（操作指导）
-- `.claude/commands/` - 命令（快捷动作）
-- `.claude/rules/` - 规则（代码约束）
-- `.claude/data/` - 知识库
+- `.trae/agents/` - 智能体（复杂任务处理）
+- `.trae/skills/` - 技能（操作指导）
+- `.trae/commands/` - 命令（快捷动作）
+- `.trae/rules/` - 规则（代码约束）
+- `.trae/data/` - 知识库
 
 ## WHY: Purpose
 
@@ -53,7 +53,8 @@ Triton算子生成系统，支持Ascend NPU平台的算子开发、验证和优�
 | CUDA转换 | triton-expert agent | "转换CUDA/迁移代码" |
 | 性能优化 | triton-expert agent | "优化性能/加速" |
 | 精度验证 | /verify-precision | "验证精度/测试正确性" |
-| 性能分析 | /profile-performance | "分析性能/性能瓶颈" |
+| 深度性能分析 | /msprof-profiling | "msprof/profiling/流水线分析/存储使用/利用率" |
+| 快速性能对比 | /benchmark-comparison | "性能对比/benchmark/加速比/快速测速" |
 | 问题调试 | /debug-kernel | "调试/NaN/Inf/错误" |
 | 添加知识 | /add-knowledge command | "添加知识" |
 
@@ -71,7 +72,8 @@ Triton算子生成系统，支持Ascend NPU平台的算子开发、验证和优�
 | Skill | Purpose | Invocation |
 |-------|---------|------------|
 | `verify-precision` | 精度验证流程 | `/verify-precision` |
-| `profile-performance` | 性能分析流程 | `/profile-performance` |
+| `msprof-profiling` | msprof深度性能分析 | `/msprof-profiling` |
+| `benchmark-comparison` | Triton vs Torch性能对比 | `/benchmark-comparison` |
 | `debug-kernel` | 算子调试流程 | `/debug-kernel` |
 
 ### Commands

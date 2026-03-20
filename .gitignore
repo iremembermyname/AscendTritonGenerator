@@ -44,3 +44,9 @@ Thumbs.db
 # Test outputs
 test_outputs/
 *.prof
+
+# Other projects
+KernelBench/
+akg/
+triton-ascend/
+triton-ascend-ops/
