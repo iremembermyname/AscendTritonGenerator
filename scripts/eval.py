@@ -8,6 +8,7 @@ Usage:
     python scripts/eval.py --level level1 --operator 01_relu   # 评测单个算子
     python scripts/eval.py --list                       # 列出所有可用 levels
     python scripts/eval.py --verbose                    # 详细输出
+    python scripts/eval.py --save-csv                   # 保存结果到CSV文件
 """
 
 import argparse
@@ -51,6 +52,11 @@ def main():
         "--verbose",
         action="store_true",
         help="Verbose output",
+    )
+    parser.add_argument(
+        "--save-csv",
+        action="store_true",
+        help="Save evaluation results to CSV file",
     )
 
     args = parser.parse_args()
@@ -109,10 +115,11 @@ def main():
             print(f"Error:       {result.error_message}")
         print("=" * 70)
 
-        # 保存单个算子结果到CSV
-        results = {args.level: {args.operator: result}}
-        csv_path = save_results_to_csv(results, output_dir=base_dir)
-        print(f"\nResults saved to: {csv_path}")
+        # 保存单个算子结果到CSV（如果指定了--save-csv）
+        if args.save_csv:
+            results = {args.level: {args.operator: result}}
+            csv_path = save_results_to_csv(results, output_dir=base_dir)
+            print(f"\nResults saved to: {csv_path}")
 
         return 0 if result.correctness else 1
 
@@ -135,9 +142,10 @@ def main():
 
     print_summary(results)
 
-    # 保存结果到CSV
-    csv_path = save_results_to_csv(results, output_dir=base_dir)
-    print(f"\nResults saved to: {csv_path}")
+    # 保存结果到CSV（如果指定了--save-csv）
+    if args.save_csv:
+        csv_path = save_results_to_csv(results, output_dir=base_dir)
+        print(f"\nResults saved to: {csv_path}")
 
     return 0
 
